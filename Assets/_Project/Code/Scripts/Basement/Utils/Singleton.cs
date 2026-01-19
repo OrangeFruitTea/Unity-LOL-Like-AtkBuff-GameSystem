@@ -2,7 +2,7 @@ using System;
 using Unity.VisualScripting;
 using UnityEngine;
 
-namespace utils
+namespace Basement.Utils
 {
     public class Singleton<T> : MonoBehaviour where T : Singleton<T>
     {
