@@ -6,7 +6,7 @@ namespace Basement.Utils
 {
     public class Singleton<T> : MonoBehaviour where T : Singleton<T>
     {
-        protected static T _instance;
+        protected static volatile T _instance;
         private static bool _isDestroyed = false;
         private static readonly object _lock = new object();
         public static T Instance
@@ -19,14 +19,14 @@ namespace Basement.Utils
                     return null;
                 }
 
-                if (_instance.Equals(null))
+                if (_instance == null)
                 {
                     lock (_lock)
                     {
-                        if (_instance.Equals(null))
+                        if (_instance == null)
                         {
                             var existingInstance = FindObjectOfType<T>();
-                            if (!existingInstance.Equals(null))
+                            if (existingInstance != null)
                             {
                                 _instance = existingInstance;
                             }
