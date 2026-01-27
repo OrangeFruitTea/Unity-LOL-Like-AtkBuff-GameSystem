@@ -97,3 +97,21 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+Assets/_Project/Code/Scripts/调试日志系统设计方案.md
+Assets/_Project/Code/Scripts/调试日志系统设计方案.md.meta
+Assets/_Project/Code/Scripts/调试日志系统完整设计方案.md
+Assets/_Project/Code/Scripts/调试日志系统完整设计方案.md.meta
+Assets/_Project/Code/Scripts/任务依赖关系支持设计方案.md
+Assets/_Project/Code/Scripts/任务依赖关系支持设计方案.md.meta
+Assets/_Project/Code/Scripts/协程多线程技术框架设计方案.md
+Assets/_Project/Code/Scripts/协程多线程技术框架设计方案.md.meta
+Assets/_Project/Code/Scripts/协程多线程技术框架设计方案（含任务依赖支持）.md
+Assets/_Project/Code/Scripts/协程多线程技术框架设计方案（含任务依赖支持）.md.meta
+Assets/_Project/Code/Scripts/资源池框架设计方案.md
+Assets/_Project/Code/Scripts/资源池框架设计方案.md.meta
+Assets/_Project/Code/Scripts/资源池框架完整设计方案.md
+Assets/_Project/Code/Scripts/资源池框架完整设计方案.md.meta
+Assets/_Project/Code/Scripts/JSON框架技术对比分析.md
+Assets/_Project/Code/Scripts/JSON框架技术对比分析.md.meta
+Assets/_Project/Code/Scripts/JSON框架评估与可视化编辑软件设计方案.md
+Assets/_Project/Code/Scripts/JSON框架评估与可视化编辑软件设计方案.md.meta

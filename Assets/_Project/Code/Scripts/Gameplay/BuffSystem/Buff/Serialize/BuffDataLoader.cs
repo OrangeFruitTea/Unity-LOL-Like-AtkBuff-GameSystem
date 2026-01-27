@@ -1,8 +1,8 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using Basement.Json;
 
 [Serializable]
 public class BuffJsonDataWrapper
@@ -40,17 +40,30 @@ public class BuffDataLoader : MonoBehaviour
     {
         try
         {
-            // 读取json文件
             string filePath = Path.Combine(Application.streamingAssetsPath, "BuffData.json");
-            string jsonContent = File.ReadAllText(filePath);
-            // 反序列化
-            BuffJsonDataWrapper wrapper = JsonUtility.FromJson<BuffJsonDataWrapper>($"{{\"Buffs\": {jsonContent}}}");
-            foreach (var data in wrapper.buffs)
+            
+            if (!File.Exists(filePath))
             {
-                if (!_buffDataMap.TryAdd(data.config.id, data))
-                    Debug.LogWarning($"buffId重复：{data.config.id}");
+                Debug.LogError($"Buff数据文件不存在: {filePath}");
+                return;
             }
-            Debug.Log($"已加载{_buffDataMap.Count}个buff配置");
+
+            string jsonContent = File.ReadAllText(filePath);
+            BuffJsonDataWrapper wrapper = JsonManager.Instance.Deserialize<BuffJsonDataWrapper>($"{{\"buffs\": {jsonContent}}}");
+            
+            if (wrapper?.buffs != null)
+            {
+                foreach (var data in wrapper.buffs)
+                {
+                    if (!_buffDataMap.TryAdd(data.config.id, data))
+                        Debug.LogWarning($"buffId重复：{data.config.id}");
+                }
+                Debug.Log($"已加载{_buffDataMap.Count}个buff配置");
+            }
+            else
+            {
+                Debug.LogError("反序列化Buff数据失败");
+            }
         }
         catch (Exception e) {
             Debug.LogError($"加载buff数据出错：{e.Message}");
