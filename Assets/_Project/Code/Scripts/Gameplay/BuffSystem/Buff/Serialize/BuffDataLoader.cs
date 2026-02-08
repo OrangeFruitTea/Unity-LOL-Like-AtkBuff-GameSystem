@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Basement.Logging;
 using Basement.Json;
+using UnityEngine;
 
 [Serializable]
 public class BuffJsonDataWrapper

@@ -60,7 +60,7 @@ namespace Basement.Tools.Debug.Tests
 
         private IEnumerator RunAllTests()
         {
-            Debug.Log("=== 开始LogManager完整测试 ===");
+            UnityEngine.Debug.Log("=== 开始LogManager完整测试 ===");
 
             yield return new WaitForSeconds(testDelay);
 
