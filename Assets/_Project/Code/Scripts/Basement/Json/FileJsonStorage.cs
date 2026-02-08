@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using UnityEngine;
+using Basement.Logging;
 
 namespace Basement.Json
 {
@@ -48,7 +48,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"保存JSON文件失败 [Key: {key}]: {ex.Message}");
+                LogManager.Instance.LogError($"保存JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
             }
         }
 
@@ -68,7 +68,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"加载JSON文件失败 [Key: {key}]: {ex.Message}");
+                LogManager.Instance.LogError($"加载JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
                 return default;
             }
         }
@@ -92,7 +92,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"删除JSON文件失败 [Key: {key}]: {ex.Message}");
+                LogManager.Instance.LogError($"删除JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
             }
         }
 
@@ -108,7 +108,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"清空JSON存储失败: {ex.Message}");
+                LogManager.Instance.LogError($"清空JSON存储失败: {ex.Message}", "FileJsonStorage");
             }
         }
 
@@ -144,7 +144,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"异步保存JSON文件失败 [Key: {key}]: {ex.Message}");
+                LogManager.Instance.LogError($"异步保存JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
             }
         }
 
@@ -164,7 +164,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"异步加载JSON文件失败 [Key: {key}]: {ex.Message}");
+                LogManager.Instance.LogError($"异步加载JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
                 return default;
             }
         }
@@ -188,7 +188,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"异步删除JSON文件失败 [Key: {key}]: {ex.Message}");
+                LogManager.Instance.LogError($"异步删除JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
             }
         }
 
@@ -207,7 +207,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                Debug.LogError($"异步清空JSON存储失败: {ex.Message}");
+                LogManager.Instance.LogError($"异步清空JSON存储失败: {ex.Message}", "FileJsonStorage");
             }
         }
     }

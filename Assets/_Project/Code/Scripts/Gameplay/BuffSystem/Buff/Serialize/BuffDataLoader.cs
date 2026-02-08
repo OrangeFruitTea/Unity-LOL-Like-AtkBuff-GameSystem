@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using UnityEngine;
+using Basement.Logging;
 using Basement.Json;
 
 [Serializable]
@@ -44,7 +44,7 @@ public class BuffDataLoader : MonoBehaviour
             
             if (!File.Exists(filePath))
             {
-                Debug.LogError($"Buff数据文件不存在: {filePath}");
+                LogManager.Instance.LogError($"Buff数据文件不存在: {filePath}", "BuffDataLoader");
                 return;
             }
 
@@ -56,17 +56,17 @@ public class BuffDataLoader : MonoBehaviour
                 foreach (var data in wrapper.buffs)
                 {
                     if (!_buffDataMap.TryAdd(data.config.id, data))
-                        Debug.LogWarning($"buffId重复：{data.config.id}");
+                        LogManager.Instance.LogWarning($"buffId重复：{data.config.id}", "BuffDataLoader");
                 }
-                Debug.Log($"已加载{_buffDataMap.Count}个buff配置");
+                LogManager.Instance.LogInfo($"已加载{_buffDataMap.Count}个buff配置", "BuffDataLoader");
             }
             else
             {
-                Debug.LogError("反序列化Buff数据失败");
+                LogManager.Instance.LogError("反序列化Buff数据失败", "BuffDataLoader");
             }
         }
         catch (Exception e) {
-            Debug.LogError($"加载buff数据出错：{e.Message}");
+            LogManager.Instance.LogError($"加载buff数据出错：{e.Message}", "BuffDataLoader");
         }
     }
 }
