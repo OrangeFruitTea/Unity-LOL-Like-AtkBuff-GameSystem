@@ -2,7 +2,7 @@
 
 ## 概述
 
-事件调度服务是核心业务层的核心组件，负责游戏内事件的分发、订阅和处理。该服务采用观察者模式实现，支持同步和异步事件处理、事件优先级、事件过滤、事件历史记录等功能，为游戏系统提供高效、灵活的事件通信机制。
+事件调度服务是核心业务层的核心组件，负责游戏内事件的分发、订阅和处理。该服务采用观察者模式实现，支持同步和异步事件处理、事件优先级、静态事件过滤、可配置的事件历史记录等功能，为游戏系统提供高效、灵活的事件通信机制。
 
 ## 模块架构设计
 
@@ -10,8 +10,8 @@
 
 - **解耦通信**：实现模块间的松耦合通信，降低系统复杂度
 - **高性能**：优化事件分发性能，支持大量事件的实时处理
-- **灵活性**：支持多种事件类型、优先级、过滤条件等
-- **可靠性**：确保事件不丢失，支持事件重试和错误处理
+- **灵活性**：支持多种事件类型、优先级、静态过滤条件等
+- **可靠性**：确保事件不丢失，支持错误处理
 - **易于扩展**：支持自定义事件类型和处理器
 
 ### 2. 架构分层
@@ -19,44 +19,33 @@
 ```
 ├── 事件调度服务
 │   ├── 核心接口
-│   │   ├── IEvent (事件接口)
+│   │   ├── IGameEvent (事件接口)
 │   │   │   ├── EventId
 │   │   │   ├── Timestamp
-│   │   │   ├── Priority
-│   │   │   └── IsHandled
-│   │   └── IEventHandler<T> (事件处理器接口)
+│   │   │   └── Priority
+│   │   └── IGameEventHandler<T> (事件处理器接口)
 │   │       ├── Handle(eventData)
-│   │       ├── Priority
-│   │       └── IsAsync
+│   │       └── Priority
 │   ├── 核心组件
-│   │   ├── EventBus (事件总线)
+│   │   ├── GameEventBus (事件总线)
 │   │   │   ├── 订阅事件 (Subscribe)
 │   │   │   ├── 取消订阅 (Unsubscribe)
 │   │   │   ├── 发布事件 (Publish)
 │   │   │   ├── 异步发布 (PublishAsync)
 │   │   │   └── 清空订阅 (Clear)
-│   │   ├── EventScheduler (事件调度器)
+│   │   ├── GameEventScheduler (事件调度器)
 │   │   │   ├── 调度事件 (Schedule)
 │   │   │   ├── 延迟调度 (ScheduleDelayed)
 │   │   │   ├── 处理队列 (ProcessQueue)
 │   │   │   ├── 更新 (Update)
 │   │   │   └── 清空队列 (ClearQueue)
-│   │   ├── EventFilterManager (事件过滤器)
-│   │   │   ├── 添加过滤器 (AddFilter)
-│   │   │   ├── 移除过滤器 (RemoveFilter)
-│   │   │   ├── 过滤事件 (Filter) 
-│   │   │   └── 清空过滤器 (Clear)
-│   │   └── EventHistoryRecorder (事件历史记录)
+│   │   └── GameEventHistory (事件历史记录)
 │   │       ├── 记录事件 (RecordEvent)
 │   │       ├── 获取记录 (GetRecords)
-│   │       ├── 按事件ID获取记录 (GetRecordsByEventId)
-│   │       ├── 导出记录 (ExportRecords)
 │   │       └── 清空记录 (Clear)
 │   ├── 辅助组件
 │   │   ├── PriorityQueue<T> (优先级队列)
-│   │   ├── EventPool<T> (事件池化)
-│   │   ├── BatchEventProcessor (批量事件处理)
-│   │   └── EventDeduplicator (事件去重)
+│   │   └── EventPool<T> (事件池化)
 │   └── 与Unity集成
 │       ├── MonoBehaviour集成
 │       ├── 编辑器工具
@@ -68,13 +57,15 @@
 #### 3.1 事件接口
 
 ```csharp
+using System;
+
 namespace Basement.Events
 {
     /// <summary>
     /// 事件接口
     /// 所有事件类型都需要实现此接口
     /// </summary>
-    public interface IEvent
+    public interface IGameEvent
     {
         /// <summary>
         /// 事件唯一标识
@@ -84,23 +75,18 @@ namespace Basement.Events
         /// <summary>
         /// 事件时间戳
         /// </summary>
-        DateTime Timestamp { get; }
+        DateTime Timestamp { get; set; }
 
         /// <summary>
         /// 事件优先级
         /// </summary>
-        EventPriority Priority { get; }
-
-        /// <summary>
-        /// 事件是否已处理
-        /// </summary>
-        bool IsHandled { get; set; }
+        GameEventPriority Priority { get; }
     }
 
     /// <summary>
     /// 事件优先级枚举
     /// </summary>
-    public enum EventPriority
+    public enum GameEventPriority
     {
         /// <summary>
         /// 低优先级
@@ -115,12 +101,7 @@ namespace Basement.Events
         /// <summary>
         /// 高优先级
         /// </summary>
-        High = 2,
-
-        /// <summary>
-        /// 紧急优先级
-        /// </summary>
-        Critical = 3
+        High = 2
     }
 }
 ```
@@ -135,7 +116,7 @@ namespace Basement.Events
     /// 定义事件处理器的标准行为
     /// </summary>
     /// <typeparam name="T">事件类型</typeparam>
-    public interface IEventHandler<T> where T : IEvent
+    public interface IGameEventHandler<T> where T : IGameEvent
     {
         /// <summary>
         /// 处理事件
@@ -146,12 +127,7 @@ namespace Basement.Events
         /// <summary>
         /// 处理器优先级
         /// </summary>
-        int Priority { get; }
-
-        /// <summary>
-        /// 是否异步处理
-        /// </summary>
-        bool IsAsync { get; }
+        GameEventPriority Priority { get; }
     }
 
     /// <summary>
@@ -159,7 +135,28 @@ namespace Basement.Events
     /// </summary>
     /// <typeparam name="T">事件类型</typeparam>
     /// <param name="eventData">事件数据</param>
-    public delegate void EventHandlerDelegate<T>(T eventData) where T : IEvent;
+    public delegate void GameEventHandlerDelegate<T>(T eventData) where T : IGameEvent;
+
+    /// <summary>
+    /// 事件订阅选项
+    /// </summary>
+    public class GameEventSubscriptionOptions
+    {
+        /// <summary>
+        /// 订阅优先级
+        /// </summary>
+        public GameEventPriority Priority { get; set; } = GameEventPriority.Normal;
+
+        /// <summary>
+        /// 是否异步处理
+        /// </summary>
+        public bool IsAsync { get; set; } = false;
+
+        /// <summary>
+        /// 事件过滤条件
+        /// </summary>
+        public Func<IGameEvent, bool> Filter { get; set; } = null;
+    }
 }
 ```
 
@@ -169,8 +166,6 @@ namespace Basement.Events
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Basement.Logging;
-using Basement.Utils;
 
 namespace Basement.Events
 {
@@ -178,10 +173,9 @@ namespace Basement.Events
     /// 事件总线
     /// 负责事件的注册、订阅和分发
     /// </summary>
-    public class EventBus : Singleton<EventBus>
+    public class GameEventBus : Singleton<GameEventBus>
     {
-        private readonly Dictionary<Type, List<Delegate>> _eventHandlers = new Dictionary<Type, List<Delegate>>();
-        private readonly Dictionary<Type, List<HandlerInfo>> _handlerInfos = new Dictionary<Type, List<HandlerInfo>>();
+        private readonly Dictionary<Type, List<GameEventHandlerInfo>> _eventHandlers = new Dictionary<Type, List<GameEventHandlerInfo>>();
         private readonly object _lock = new object();
         private bool _isInitialized = false;
 
@@ -190,7 +184,6 @@ namespace Basement.Events
             if (_isInitialized) return;
 
             _isInitialized = true;
-            LogManager.Instance.LogInfo("事件总线初始化完成", "EventBus");
         }
 
         /// <summary>
@@ -198,11 +191,21 @@ namespace Basement.Events
         /// </summary>
         /// <typeparam name="T">事件类型</typeparam>
         /// <param name="handler">事件处理器</param>
-        public void Subscribe<T>(EventHandlerDelegate<T> handler) where T : IEvent
+        public void Subscribe<T>(GameEventHandlerDelegate<T> handler) where T : IGameEvent
+        {
+            Subscribe(handler, new GameEventSubscriptionOptions());
+        }
+
+        /// <summary>
+        /// 订阅事件（带选项）
+        /// </summary>
+        /// <typeparam name="T">事件类型</typeparam>
+        /// <param name="handler">事件处理器</param>
+        /// <param name="options">订阅选项</param>
+        public void Subscribe<T>(GameEventHandlerDelegate<T> handler, GameEventSubscriptionOptions options) where T : IGameEvent
         {
             if (handler == null)
             {
-                LogManager.Instance.LogWarning("事件处理器不能为空", "EventBus");
                 return;
             }
 
@@ -212,50 +215,20 @@ namespace Basement.Events
             {
                 if (!_eventHandlers.ContainsKey(eventType))
                 {
-                    _eventHandlers[eventType] = new List<Delegate>();
+                    _eventHandlers[eventType] = new List<GameEventHandlerInfo>();
                 }
 
-                if (!_eventHandlers[eventType].Contains(handler))
-                {
-                    _eventHandlers[eventType].Add(handler);
-                    LogManager.Instance.LogDebug($"订阅事件: {eventType.Name}", "EventBus");
-                }
-            }
-        }
-
-        /// <summary>
-        /// 订阅事件（带优先级）
-        /// </summary>
-        /// <typeparam name="T">事件类型</typeparam>
-        /// <param name="handler">事件处理器</param>
-        /// <param name="priority">优先级</param>
-        public void Subscribe<T>(EventHandlerDelegate<T> handler, int priority) where T : IEvent
-        {
-            if (handler == null)
-            {
-                LogManager.Instance.LogWarning("事件处理器不能为空", "EventBus");
-                return;
-            }
-
-            Type eventType = typeof(T);
-
-            lock (_lock)
-            {
-                if (!_handlerInfos.ContainsKey(eventType))
-                {
-                    _handlerInfos[eventType] = new List<HandlerInfo>();
-                }
-
-                HandlerInfo handlerInfo = new HandlerInfo
+                var handlerInfo = new GameEventHandlerInfo
                 {
                     Handler = handler,
-                    Priority = priority
+                    Priority = options.Priority,
+                    IsAsync = options.IsAsync,
+                    Filter = options.Filter
                 };
 
-                _handlerInfos[eventType].Add(handlerInfo);
-                _handlerInfos[eventType].Sort((a, b) => b.Priority.CompareTo(a.Priority));
-
-                LogManager.Instance.LogDebug($"订阅事件 [优先级: {priority}]: {eventType.Name}", "EventBus");
+                _eventHandlers[eventType].Add(handlerInfo);
+                // 按优先级排序
+                _eventHandlers[eventType].Sort((a, b) => b.Priority.CompareTo(a.Priority));
             }
         }
 
@@ -264,7 +237,7 @@ namespace Basement.Events
         /// </summary>
         /// <typeparam name="T">事件类型</typeparam>
         /// <param name="handler">事件处理器</param>
-        public void Unsubscribe<T>(EventHandlerDelegate<T> handler) where T : IEvent
+        public void Unsubscribe<T>(GameEventHandlerDelegate<T> handler) where T : IGameEvent
         {
             if (handler == null) return;
 
@@ -274,13 +247,7 @@ namespace Basement.Events
             {
                 if (_eventHandlers.ContainsKey(eventType))
                 {
-                    _eventHandlers[eventType].Remove(handler);
-                    LogManager.Instance.LogDebug($"取消订阅事件: {eventType.Name}", "EventBus");
-                }
-
-                if (_handlerInfos.ContainsKey(eventType))
-                {
-                    _handlerInfos[eventType].RemoveAll(h => h.Handler == handler);
+                    _eventHandlers[eventType].RemoveAll(h => h.Handler == handler);
                 }
             }
         }
@@ -290,48 +257,45 @@ namespace Basement.Events
         /// </summary>
         /// <typeparam name="T">事件类型</typeparam>
         /// <param name="eventData">事件数据</param>
-        public void Publish<T>(T eventData) where T : IEvent
+        public void Publish<T>(T eventData) where T : IGameEvent
         {
             if (eventData == null)
             {
-                LogManager.Instance.LogWarning("事件数据不能为空", "EventBus");
                 return;
             }
 
             Type eventType = typeof(T);
 
+            // 设置事件时间戳
+            if (eventData.Timestamp == default)
+            {
+                eventData.Timestamp = DateTime.Now;
+            }
+
+            List<GameEventHandlerInfo> handlers;
+
             lock (_lock)
             {
-                // 设置事件时间戳
-                if (eventData.Timestamp == default)
+                if (!_eventHandlers.TryGetValue(eventType, out handlers))
                 {
-                    eventData.Timestamp = DateTime.Now;
+                    return;
+                }
+                // 创建副本以避免并发修改
+                handlers = handlers.ToList();
+            }
+
+            foreach (var handlerInfo in handlers)
+            {
+                // 应用静态过滤条件
+                if (handlerInfo.Filter != null && !handlerInfo.Filter(eventData))
+                {
+                    continue;
                 }
 
-                // 处理无优先级的处理器
-                if (_eventHandlers.ContainsKey(eventType))
+                if (handlerInfo.IsAsync)
                 {
-                    var handlers = _eventHandlers[eventType].ToList();
-
-                    foreach (var handler in handlers)
-                    {
-                        try
-                        {
-                            handler.DynamicInvoke(eventData);
-                        }
-                        catch (Exception ex)
-                        {
-                            LogManager.Instance.LogError($"事件处理失败 [{eventType.Name}]: {ex.Message}", "EventBus");
-                        }
-                    }
-                }
-
-                // 处理带优先级的处理器
-                if (_handlerInfos.ContainsKey(eventType))
-                {
-                    var handlerInfos = _handlerInfos[eventType].ToList();
-
-                    foreach (var handlerInfo in handlerInfos)
+                    // 异步处理
+                    System.Threading.ThreadPool.QueueUserWorkItem(state =>
                     {
                         try
                         {
@@ -339,12 +303,22 @@ namespace Basement.Events
                         }
                         catch (Exception ex)
                         {
-                            LogManager.Instance.LogError($"事件处理失败 [{eventType.Name}]: {ex.Message}", "EventBus");
+                            // 处理异常
                         }
+                    });
+                }
+                else
+                {
+                    // 同步处理
+                    try
+                    {
+                        handlerInfo.Handler.DynamicInvoke(eventData);
+                    }
+                    catch (Exception ex)
+                    {
+                        // 处理异常
                     }
                 }
-
-                LogManager.Instance.LogDebug($"发布事件: {eventType.Name}", "EventBus");
             }
         }
 
@@ -353,22 +327,17 @@ namespace Basement.Events
         /// </summary>
         /// <typeparam name="T">事件类型</typeparam>
         /// <param name="eventData">事件数据</param>
-        public void PublishAsync<T>(T eventData) where T : IEvent
+        public void PublishAsync<T>(T eventData) where T : IGameEvent
         {
             if (eventData == null)
             {
-                LogManager.Instance.LogWarning("事件数据不能为空", "EventBus");
                 return;
             }
 
-            Type eventType = typeof(T);
-
-            lock (_lock)
+            // 设置事件时间戳
+            if (eventData.Timestamp == default)
             {
-                if (eventData.Timestamp == default)
-                {
-                    eventData.Timestamp = DateTime.Now;
-                }
+                eventData.Timestamp = DateTime.Now;
             }
 
             // 在后台线程处理事件
@@ -386,8 +355,6 @@ namespace Basement.Events
             lock (_lock)
             {
                 _eventHandlers.Clear();
-                _handlerInfos.Clear();
-                LogManager.Instance.LogInfo("清空所有事件订阅", "EventBus");
             }
         }
 
@@ -395,7 +362,7 @@ namespace Basement.Events
         /// 清空指定事件的订阅
         /// </summary>
         /// <typeparam name="T">事件类型</typeparam>
-        public void Clear<T>() where T : IEvent
+        public void Clear<T>() where T : IGameEvent
         {
             Type eventType = typeof(T);
 
@@ -405,13 +372,6 @@ namespace Basement.Events
                 {
                     _eventHandlers[eventType].Clear();
                 }
-
-                if (_handlerInfos.ContainsKey(eventType))
-                {
-                    _handlerInfos[eventType].Clear();
-                }
-
-                LogManager.Instance.LogInfo($"清空事件订阅: {eventType.Name}", "EventBus");
             }
         }
 
@@ -420,32 +380,26 @@ namespace Basement.Events
         /// </summary>
         /// <typeparam name="T">事件类型</typeparam>
         /// <returns>处理器数量</returns>
-        public int GetHandlerCount<T>() where T : IEvent
+        public int GetHandlerCount<T>() where T : IGameEvent
         {
             Type eventType = typeof(T);
 
             lock (_lock)
             {
-                int count = 0;
-
-                if (_eventHandlers.ContainsKey(eventType))
+                if (_eventHandlers.TryGetValue(eventType, out var handlers))
                 {
-                    count += _eventHandlers[eventType].Count;
+                    return handlers.Count;
                 }
-
-                if (_handlerInfos.ContainsKey(eventType))
-                {
-                    count += _handlerInfos[eventType].Count;
-                }
-
-                return count;
+                return 0;
             }
         }
 
-        private class HandlerInfo
+        private class GameEventHandlerInfo
         {
             public Delegate Handler { get; set; }
-            public int Priority { get; set; }
+            public GameEventPriority Priority { get; set; }
+            public bool IsAsync { get; set; }
+            public Func<IGameEvent, bool> Filter { get; set; }
         }
     }
 }
@@ -456,8 +410,6 @@ namespace Basement.Events
 ```csharp
 using System;
 using System.Collections.Generic;
-using Basement.Logging;
-using Basement.Utils;
 
 namespace Basement.Events
 {
@@ -465,10 +417,10 @@ namespace Basement.Events
     /// 事件调度器
     /// 负责事件的队列管理和调度
     /// </summary>
-    public class EventScheduler : Singleton<EventScheduler>
+    public class GameEventScheduler : Singleton<GameEventScheduler>
     {
-        private readonly PriorityQueue<IEvent> _eventQueue = new PriorityQueue<IEvent>();
-        private readonly List<IEvent> _processingEvents = new List<IEvent>();
+        private readonly PriorityQueue<IGameEvent> _eventQueue = new PriorityQueue<IGameEvent>();
+        private readonly List<IGameEvent> _processingEvents = new List<IGameEvent>();
         private readonly object _lock = new object();
         private bool _isProcessing = false;
         private int _maxConcurrentEvents = 10;
@@ -477,25 +429,22 @@ namespace Basement.Events
 
         public void Initialize()
         {
-            LogManager.Instance.LogInfo("事件调度器初始化完成", "EventScheduler");
         }
 
         /// <summary>
         /// 调度事件
         /// </summary>
         /// <param name="eventData">事件数据</param>
-        public void Schedule(IEvent eventData)
+        public void Schedule(IGameEvent eventData)
         {
             if (eventData == null)
             {
-                LogManager.Instance.LogWarning("事件数据不能为空", "EventScheduler");
                 return;
             }
 
             lock (_lock)
             {
                 _eventQueue.Enqueue(eventData, (int)eventData.Priority);
-                LogManager.Instance.LogDebug($"调度事件: {eventData.EventId} [优先级: {eventData.Priority}]", "EventScheduler");
             }
         }
 
@@ -504,20 +453,25 @@ namespace Basement.Events
         /// </summary>
         /// <param name="eventData">事件数据</param>
         /// <param name="delay">延迟时间（秒）</param>
-        public void ScheduleDelayed(IEvent eventData, float delay)
+        public void ScheduleDelayed(IGameEvent eventData, float delay)
         {
             if (eventData == null)
             {
-                LogManager.Instance.LogWarning("事件数据不能为空", "EventScheduler");
                 return;
             }
 
-            TimerManager.Instance.Schedule(delay, () =>
+            // 使用Unity协程实现延迟
+            UnityEngine.MonoBehaviour monoBehaviour = UnityEngine.Object.FindObjectOfType<UnityEngine.MonoBehaviour>();
+            if (monoBehaviour != null)
             {
-                Schedule(eventData);
-            });
+                monoBehaviour.StartCoroutine(ScheduleDelayedCoroutine(eventData, delay));
+            }
+        }
 
-            LogManager.Instance.LogDebug($"延迟调度事件: {eventData.EventId} [延迟: {delay}秒]", "EventScheduler");
+        private System.Collections.IEnumerator ScheduleDelayedCoroutine(IGameEvent eventData, float delay)
+        {
+            yield return new UnityEngine.WaitForSeconds(delay);
+            Schedule(eventData);
         }
 
         /// <summary>
@@ -540,7 +494,7 @@ namespace Basement.Events
 
                 while (processedCount < _maxConcurrentEvents)
                 {
-                    IEvent eventData;
+                    IGameEvent eventData;
 
                     lock (_lock)
                     {
@@ -552,12 +506,12 @@ namespace Basement.Events
 
                     try
                     {
-                        EventBus.Instance.Publish(eventData);
+                        GameEventBus.Instance.Publish(eventData);
                         processedCount++;
                     }
                     catch (Exception ex)
                     {
-                        LogManager.Instance.LogError($"处理事件失败 [{eventData.EventId}]: {ex.Message}", "EventScheduler");
+                        // 处理异常
                     }
                     finally
                     {
@@ -566,11 +520,6 @@ namespace Basement.Events
                             _processingEvents.Remove(eventData);
                         }
                     }
-                }
-
-                if (processedCount > 0)
-                {
-                    LogManager.Instance.LogDebug($"处理事件: {processedCount}个", "EventScheduler");
                 }
             }
             finally
@@ -600,7 +549,6 @@ namespace Basement.Events
             {
                 _eventQueue.Clear();
                 _processingEvents.Clear();
-                LogManager.Instance.LogInfo("清空事件队列", "EventScheduler");
             }
         }
 
@@ -624,7 +572,6 @@ namespace Basement.Events
         public void SetMaxConcurrentEvents(int max)
         {
             _maxConcurrentEvents = Math.Max(1, max);
-            LogManager.Instance.LogInfo($"最大并发事件数设置为: {_maxConcurrentEvents}", "EventScheduler");
         }
 
         /// <summary>
@@ -633,7 +580,6 @@ namespace Basement.Events
         public void SetProcessInterval(float interval)
         {
             _processInterval = Math.Max(0.001f, interval);
-            LogManager.Instance.LogInfo($"处理间隔设置为: {_processInterval}秒", "EventScheduler");
         }
     }
 
@@ -673,169 +619,11 @@ namespace Basement.Events
 }
 ```
 
-#### 3.5 事件过滤器
+#### 3.5 事件历史记录
 
 ```csharp
 using System;
 using System.Collections.Generic;
-using Basement.Logging;
-
-namespace Basement.Events
-{
-    /// <summary>
-    /// 事件过滤器接口
-    /// </summary>
-    public interface IEventFilter
-    {
-        /// <summary>
-        /// 是否通过过滤器
-        /// </summary>
-        /// <param name="eventData">事件数据</param>
-        /// <returns>是否通过</returns>
-        bool Pass(IEvent eventData);
-    }
-
-    /// <summary>
-    /// 事件过滤器管理器
-    /// </summary>
-    public class EventFilterManager
-    {
-        private readonly List<IEventFilter> _filters = new List<IEventFilter>();
-        private readonly object _lock = new object();
-
-        /// <summary>
-        /// 添加过滤器
-        /// </summary>
-        /// <param name="filter">过滤器</param>
-        public void AddFilter(IEventFilter filter)
-        {
-            if (filter == null) return;
-
-            lock (_lock)
-            {
-                if (!_filters.Contains(filter))
-                {
-                    _filters.Add(filter);
-                    LogManager.Instance.LogDebug($"添加事件过滤器: {filter.GetType().Name}", "EventFilterManager");
-                }
-            }
-        }
-
-        /// <summary>
-        /// 移除过滤器
-        /// </summary>
-        /// <param name="filter">过滤器</param>
-        public void RemoveFilter(IEventFilter filter)
-        {
-            if (filter == null) return;
-
-            lock (_lock)
-            {
-                _filters.Remove(filter);
-                LogManager.Instance.LogDebug($"移除事件过滤器: {filter.GetType().Name}", "EventFilterManager");
-            }
-        }
-
-        /// <summary>
-        /// 过滤事件
-        /// </summary>
-        /// <param name="eventData">事件数据</param>
-        /// <returns>是否通过所有过滤器</returns>
-        public bool Filter(IEvent eventData)
-        {
-            if (eventData == null) return false;
-
-            lock (_lock)
-            {
-                foreach (var filter in _filters)
-                {
-                    if (!filter.Pass(eventData))
-                    {
-                        LogManager.Instance.LogDebug($"事件被过滤器拒绝: {eventData.EventId}", "EventFilterManager");
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// 清空所有过滤器
-        /// </summary>
-        public void Clear()
-        {
-            lock (_lock)
-            {
-                _filters.Clear();
-                LogManager.Instance.LogInfo("清空所有事件过滤器", "EventFilterManager");
-            }
-        }
-    }
-
-    /// <summary>
-    /// 事件ID过滤器
-    /// </summary>
-    public class EventIdFilter : IEventFilter
-    {
-        private readonly HashSet<string> _allowedEventIds;
-
-        public EventIdFilter(params string[] eventIds)
-        {
-            _allowedEventIds = new HashSet<string>(eventIds);
-        }
-
-        public bool Pass(IEvent eventData)
-        {
-            return eventData != null && _allowedEventIds.Contains(eventData.EventId);
-        }
-    }
-
-    /// <summary>
-    /// 事件优先级过滤器
-    /// </summary>
-    public class EventPriorityFilter : IEventFilter
-    {
-        private readonly EventPriority _minPriority;
-
-        public EventPriorityFilter(EventPriority minPriority)
-        {
-            _minPriority = minPriority;
-        }
-
-        public bool Pass(IEvent eventData)
-        {
-            return eventData != null && eventData.Priority >= _minPriority;
-        }
-    }
-
-    /// <summary>
-    /// 事件类型过滤器
-    /// </summary>
-    public class EventTypeFilter : IEventFilter
-    {
-        private readonly Type _eventType;
-
-        public EventTypeFilter(Type eventType)
-        {
-            _eventType = eventType;
-        }
-
-        public bool Pass(IEvent eventData)
-        {
-            return eventData != null && eventData.GetType() == _eventType;
-        }
-    }
-}
-```
-
-#### 3.6 事件历史记录
-
-```csharp
-using System;
-using System.Collections.Generic;
-using Basement.Logging;
-using Basement.Utils;
 
 namespace Basement.Events
 {
@@ -843,37 +631,35 @@ namespace Basement.Events
     /// 事件历史记录器
     /// 负责记录事件的历史信息
     /// </summary>
-    public class EventHistoryRecorder : Singleton<EventHistoryRecorder>
+    public class GameEventHistory : Singleton<GameEventHistory>
     {
-        private readonly Queue<EventRecord> _eventRecords = new Queue<EventRecord>();
+        private readonly Queue<GameEventRecord> _eventRecords = new Queue<GameEventRecord>();
         private readonly object _lock = new object();
         private int _maxRecords = 1000;
-        private bool _isRecording = false;
+        private bool _isEnabled = false;
 
-        public void Initialize(int maxRecords = 1000)
+        public void Initialize(bool enabled = false, int maxRecords = 1000)
         {
             _maxRecords = maxRecords;
-            _isRecording = true;
-            LogManager.Instance.LogInfo($"事件历史记录器初始化完成 [最大记录数: {_maxRecords}]", "EventHistoryRecorder");
+            _isEnabled = enabled;
         }
 
         /// <summary>
         /// 记录事件
         /// </summary>
         /// <param name="eventData">事件数据</param>
-        public void RecordEvent(IEvent eventData)
+        public void RecordEvent(IGameEvent eventData)
         {
-            if (!_isRecording || eventData == null) return;
+            if (!_isEnabled || eventData == null) return;
 
             lock (_lock)
             {
-                EventRecord record = new EventRecord
+                GameEventRecord record = new GameEventRecord
                 {
                     EventId = eventData.EventId,
                     EventType = eventData.GetType().Name,
                     Timestamp = eventData.Timestamp,
-                    Priority = eventData.Priority,
-                    IsHandled = eventData.IsHandled
+                    Priority = eventData.Priority
                 };
 
                 _eventRecords.Enqueue(record);
@@ -891,39 +677,16 @@ namespace Basement.Events
         /// </summary>
         /// <param name="count">记录数量</param>
         /// <returns>事件记录列表</returns>
-        public List<EventRecord> GetRecords(int count = 10)
+        public List<GameEventRecord> GetRecords(int count = 10)
         {
             lock (_lock)
             {
-                List<EventRecord> records = new List<EventRecord>();
+                List<GameEventRecord> records = new List<GameEventRecord>();
 
                 foreach (var record in _eventRecords)
                 {
                     records.Add(record);
                     if (records.Count >= count) break;
-                }
-
-                return records;
-            }
-        }
-
-        /// <summary>
-        /// 根据事件ID获取记录
-        /// </summary>
-        /// <param name="eventId">事件ID</param>
-        /// <returns>事件记录列表</returns>
-        public List<EventRecord> GetRecordsByEventId(string eventId)
-        {
-            lock (_lock)
-            {
-                List<EventRecord> records = new List<EventRecord>();
-
-                foreach (var record in _eventRecords)
-                {
-                    if (record.EventId == eventId)
-                    {
-                        records.Add(record);
-                    }
                 }
 
                 return records;
@@ -938,68 +701,35 @@ namespace Basement.Events
             lock (_lock)
             {
                 _eventRecords.Clear();
-                LogManager.Instance.LogInfo("清空事件历史记录", "EventHistoryRecorder");
             }
         }
 
         /// <summary>
-        /// 导出记录
+        /// 启用记录
         /// </summary>
-        /// <param name="filePath">文件路径</param>
-        public void ExportRecords(string filePath)
+        public void Enable()
         {
-            lock (_lock)
-            {
-                try
-                {
-                    using (var writer = new System.IO.StreamWriter(filePath))
-                    {
-                        writer.WriteLine("EventId,EventType,Timestamp,Priority,IsHandled");
-
-                        foreach (var record in _eventRecords)
-                        {
-                            writer.WriteLine($"{record.EventId},{record.EventType},{record.Timestamp},{record.Priority},{record.IsHandled}");
-                        }
-                    }
-
-                    LogManager.Instance.LogInfo($"导出事件记录到: {filePath}", "EventHistoryRecorder");
-                }
-                catch (Exception ex)
-                {
-                    LogManager.Instance.LogError($"导出事件记录失败: {ex.Message}", "EventHistoryRecorder");
-                }
-            }
+            _isEnabled = true;
         }
 
         /// <summary>
-        /// 开始记录
+        /// 禁用记录
         /// </summary>
-        public void StartRecording()
+        public void Disable()
         {
-            _isRecording = true;
-            LogManager.Instance.LogInfo("开始记录事件历史", "EventHistoryRecorder");
-        }
-
-        /// <summary>
-        /// 停止记录
-        /// </summary>
-        public void StopRecording()
-        {
-            _isRecording = false;
-            LogManager.Instance.LogInfo("停止记录事件历史", "EventHistoryRecorder");
+            _isEnabled = false;
         }
     }
 
     /// <summary>
     /// 事件记录
     /// </summary>
-    public class EventRecord
+    public class GameEventRecord
     {
         public string EventId { get; set; }
         public string EventType { get; set; }
         public DateTime Timestamp { get; set; }
-        public EventPriority Priority { get; set; }
-        public bool IsHandled { get; set; }
+        public GameEventPriority Priority { get; set; }
     }
 }
 ```

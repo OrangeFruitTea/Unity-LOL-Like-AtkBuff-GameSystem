@@ -2,16 +2,16 @@
 
 ## 概述
 
-时序任务调度系统是核心业务层的核心组件，负责游戏中的定时任务管理。该系统支持延迟任务、周期性任务、定时任务、条件任务等多种任务类型，提供精确的时间管理和任务调度功能，确保游戏逻辑的时序正确性和性能优化。
+时序任务调度系统是核心业务层的核心组件，负责游戏中的定时任务管理。该系统支持时间触发任务、周期性任务、条件任务等多种任务类型，提供精确的时间管理和任务调度功能，确保游戏逻辑的时序正确性和性能优化。
 
 ## 模块架构设计
 
 ### 1. 设计目标
 
 - **精确调度**：提供高精度的任务调度，支持毫秒级时间控制
-- **多种任务类型**：支持延迟任务、周期性任务、定时任务、条件任务等
+- **多种任务类型**：支持时间触发任务、周期性任务、条件任务等
 - **高性能**：优化任务调度性能，支持大量任务的实时管理
-- **任务管理**：提供任务的创建、取消、暂停、恢复等管理功能
+- **任务管理**：提供任务的创建、取消等管理功能
 - **易于扩展**：支持自定义任务类型和调度策略
 
 ### 2. 架构分层
@@ -19,48 +19,41 @@
 ```
 ├── 时序任务调度系统
 │   ├── 核心接口
-│   │   ├── ITask (任务接口)
+│   │   ├── ITimingTask (任务接口)
 │   │   │   ├── TaskId
 │   │   │   ├── State
 │   │   │   ├── Priority
-│   │   │   ├── CreatedTime
-│   │   │   ├── ExecuteTime
+│   │   │   ├── DelayTime
 │   │   │   ├── Execute()
-│   │   │   ├── Cancel()
-│   │   │   ├── Pause()
-│   │   │   └── Resume()
+│   │   │   └── Cancel()
 │   ├── 核心组件
-│   │   ├── TaskBase (任务基类)
+│   │   ├── TimingTaskBase (任务基类)
 │   │   │   ├── 基本属性实现
 │   │   │   ├── 生命周期管理
 │   │   │   └── 事件回调
 │   │   ├── 任务类型
-│   │   │   ├── DelayedTask (延迟任务)
+│   │   │   ├── TimeTriggeredTask (时间触发任务)
 │   │   │   │   ├── 延迟执行
+│   │   │   │   ├── 定时执行
 │   │   │   │   └── 一次性执行
 │   │   │   ├── PeriodicTask (周期性任务)
 │   │   │   │   ├── 按间隔重复执行
 │   │   │   │   └── 可设置重复次数
-│   │   │   ├── ScheduledTask (定时任务)
-│   │   │   │   ├── 在指定时间执行
-│   │   │   │   └── 一次性执行
 │   │   │   └── ConditionalTask (条件任务)
 │   │   │       ├── 满足条件时执行
 │   │   │       └── 定期检查条件
-│   │   ├── TaskManager (任务管理器)
+│   │   ├── TimingTaskManager (任务管理器)
 │   │   │   ├── 创建任务
 │   │   │   ├── 管理任务
 │   │   │   ├── 取消任务
-│   │   │   ├── 暂停/恢复任务
 │   │   │   └── 任务统计
-│   │   └── TaskScheduler (任务调度器)
+│   │   └── TimingTaskScheduler (任务调度器)
 │   │       ├── 任务执行调度
 │   │       ├── 时间管理
 │   │       └── 活跃任务管理
 │   ├── 辅助组件
 │   │   ├── TaskPool<T> (任务池化)
-│   │   ├── BatchTaskProcessor (批量任务处理)
-│   │   └── PriorityTaskScheduler (任务优先级优化)
+│   │   └── BatchTaskProcessor (批量任务处理)
 │   └── 与Unity集成
 │       ├── MonoBehaviour集成
 │       ├── 协程支持
@@ -81,7 +74,7 @@ namespace Basement.Tasks
     /// 任务接口
     /// 定义任务的标准行为
     /// </summary>
-    public interface ITask
+    public interface ITimingTask
     {
         /// <summary>
         /// 任务ID
@@ -91,22 +84,17 @@ namespace Basement.Tasks
         /// <summary>
         /// 任务状态
         /// </summary>
-        TaskState State { get; }
+        TimingTaskState State { get; }
 
         /// <summary>
         /// 任务优先级
         /// </summary>
-        TaskPriority Priority { get; }
+        TimingTaskPriority Priority { get; }
 
         /// <summary>
-        /// 任务创建时间
+        /// 任务延迟时间（秒）
         /// </summary>
-        DateTime CreatedTime { get; }
-
-        /// <summary>
-        /// 任务执行时间
-        /// </summary>
-        DateTime ExecuteTime { get; }
+        float DelayTime { get; }
 
         /// <summary>
         /// 执行任务
@@ -117,27 +105,17 @@ namespace Basement.Tasks
         /// 取消任务
         /// </summary>
         void Cancel();
-
-        /// <summary>
-        /// 暂停任务
-        /// </summary>
-        void Pause();
-
-        /// <summary>
-        /// 恢复任务
-        /// </summary>
-        void Resume();
     }
 
     /// <summary>
     /// 任务状态枚举
     /// </summary>
-    public enum TaskState
+    public enum TimingTaskState
     {
         /// <summary>
-        /// 等待中
+        /// 就绪
         /// </summary>
-        Pending,
+        Ready,
 
         /// <summary>
         /// 执行中
@@ -145,30 +123,15 @@ namespace Basement.Tasks
         Running,
 
         /// <summary>
-        /// 已完成
+        /// 完成
         /// </summary>
-        Completed,
-
-        /// <summary>
-        /// 已取消
-        /// </summary>
-        Cancelled,
-
-        /// <summary>
-        /// 已暂停
-        /// </summary>
-        Paused,
-
-        /// <summary>
-        /// 失败
-        /// </summary>
-        Failed
+        Completed
     }
 
     /// <summary>
     /// 任务优先级枚举
     /// </summary>
-    public enum TaskPriority
+    public enum TimingTaskPriority
     {
         /// <summary>
         /// 低优先级
@@ -183,12 +146,7 @@ namespace Basement.Tasks
         /// <summary>
         /// 高优先级
         /// </summary>
-        High = 2,
-
-        /// <summary>
-        /// 紧急优先级
-        /// </summary>
-        Critical = 3
+        High = 2
     }
 }
 ```
@@ -197,7 +155,6 @@ namespace Basement.Tasks
 
 ```csharp
 using System;
-using Basement.Logging;
 
 namespace Basement.Tasks
 {
@@ -205,103 +162,73 @@ namespace Basement.Tasks
     /// 任务基类
     /// 提供任务的基本实现
     /// </summary>
-    public abstract class TaskBase : ITask
+    public abstract class TimingTaskBase : ITimingTask
     {
         public string TaskId { get; protected set; }
-        public TaskState State { get; protected set; }
-        public TaskPriority Priority { get; protected set; }
-        public DateTime CreatedTime { get; protected set; }
-        public DateTime ExecuteTime { get; protected set; }
+        public TimingTaskState State { get; protected set; }
+        public TimingTaskPriority Priority { get; protected set; }
+        public float DelayTime { get; protected set; }
 
         protected Action _onCompleted;
         protected Action _onCancelled;
         protected Action<Exception> _onFailed;
 
-        protected TaskBase(string taskId, TaskPriority priority, float delay)
+        protected TimingTaskBase(string taskId, TimingTaskPriority priority, float delayTime)
         {
             TaskId = taskId ?? Guid.NewGuid().ToString();
             Priority = priority;
-            State = TaskState.Pending;
-            CreatedTime = DateTime.Now;
-            ExecuteTime = DateTime.Now.AddSeconds(delay);
+            State = TimingTaskState.Ready;
+            DelayTime = delayTime;
         }
 
         public virtual void Execute()
         {
-            if (State != TaskState.Pending)
+            if (State != TimingTaskState.Ready)
             {
-                LogManager.Instance.LogWarning($"任务状态不正确，无法执行 [TaskId: {TaskId}, State: {State}]", "TaskBase");
                 return;
             }
 
-            State = TaskState.Running;
+            State = TimingTaskState.Running;
 
             try
             {
                 ExecuteInternal();
-                State = TaskState.Completed;
+                State = TimingTaskState.Completed;
                 _onCompleted?.Invoke();
-                LogManager.Instance.LogDebug($"任务执行成功 [TaskId: {TaskId}]", "TaskBase");
             }
             catch (Exception ex)
             {
-                State = TaskState.Failed;
+                State = TimingTaskState.Completed;
                 _onFailed?.Invoke(ex);
-                LogManager.Instance.LogError($"任务执行失败 [TaskId: {TaskId}]: {ex.Message}", "TaskBase");
             }
         }
 
         public virtual void Cancel()
         {
-            if (State == TaskState.Completed || State == TaskState.Cancelled)
+            if (State == TimingTaskState.Completed)
             {
                 return;
             }
 
-            State = TaskState.Cancelled;
+            State = TimingTaskState.Completed;
             _onCancelled?.Invoke();
-            LogManager.Instance.LogDebug($"任务已取消 [TaskId: {TaskId}]", "TaskBase");
-        }
-
-        public virtual void Pause()
-        {
-            if (State != TaskState.Running && State != TaskState.Pending)
-            {
-                LogManager.Instance.LogWarning($"任务状态不正确，无法暂停 [TaskId: {TaskId}, State: {State}]", "TaskBase");
-                return;
-            }
-
-            State = TaskState.Paused;
-            LogManager.Instance.LogDebug($"任务已暂停 [TaskId: {TaskId}]", "TaskBase");
-        }
-
-        public virtual void Resume()
-        {
-            if (State != TaskState.Paused)
-            {
-                LogManager.Instance.LogWarning($"任务状态不正确，无法恢复 [TaskId: {TaskId}, State: {State}]", "TaskBase");
-                return;
-            }
-
-            State = TaskState.Pending;
-            LogManager.Instance.LogDebug($"任务已恢复 [TaskId: {TaskId}]", "TaskBase");
         }
 
         protected abstract void ExecuteInternal();
 
-        public TaskBase OnCompleted(Action callback)
+        public TimingTaskBase OnCompleted(Action callback)
         {
             _onCompleted += callback;
             return this;
         }
 
-        public TaskBase OnCancelled(Action callback)
+        public TimingTaskBase OnCancelled(Action callback)
         {
             _onCancelled += callback;
             return this;
         }
 
-        public TaskBase OnFailed(Action<Exception> callback)
+        public TimingTaskBase OnFailed(Action<Exception> callback)
         {
             _onFailed += callback;
             return this;
@@ -310,35 +237,40 @@ namespace Basement.Tasks
 }
 ```
 
-#### 3.3 延迟任务
+#### 3.3 时间触发任务
 
 ```csharp
 using System;
-using Basement.Logging;
 
 namespace Basement.Tasks
 {
     /// <summary>
-    /// 延迟任务
-    /// 在指定延迟后执行的任务
+    /// 时间触发任务
+    /// 在指定时间或延迟后执行的任务
     /// </summary>
-    public class DelayedTask : TaskBase
+    public class TimeTriggeredTask : TimingTaskBase
     {
         private readonly Action _action;
-        private readonly float _delay;
 
-        public DelayedTask(Action action, float delay, TaskPriority priority = TaskPriority.Normal)
-            : base(null, priority, delay)
+        public TimeTriggeredTask(Action action, float delayTime, TimingTaskPriority priority = TimingTaskPriority.Normal)
+            : base(null, priority, delayTime)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
-            _delay = delay;
         }
 
-        public DelayedTask(string taskId, Action action, float delay, TaskPriority priority = TaskPriority.Normal)
-            : base(taskId, priority, delay)
+        public TimeTriggeredTask(string taskId, Action action, float delayTime, TimingTaskPriority priority = TimingTaskPriority.Normal)
+            : base(taskId, priority, delayTime)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
-            _delay = delay;
+        }
+
+        /// <summary>
+        /// 创建基于绝对时间的时间触发任务
+        /// </summary>
+        public static TimeTriggeredTask CreateScheduledTask(Action action, DateTime scheduledTime, TimingTaskPriority priority = TimingTaskPriority.Normal)
+        {
+            float delayTime = (float)(scheduledTime - DateTime.Now).TotalSeconds;
+            return new TimeTriggeredTask(action, Math.Max(0, delayTime), priority);
         }
 
         protected override void ExecuteInternal()
@@ -348,7 +280,7 @@ namespace Basement.Tasks
 
         public override string ToString()
         {
-            return $"DelayedTask [TaskId: {TaskId}, Delay: {_delay}s, Priority: {Priority}]";
+            return $"TimeTriggeredTask [TaskId: {TaskId}, Delay: {DelayTime}s, Priority: {Priority}]";
         }
     }
 }
@@ -358,7 +290,6 @@ namespace Basement.Tasks
 
 ```csharp
 using System;
-using Basement.Logging;
 
 namespace Basement.Tasks
 {
@@ -366,67 +297,56 @@ namespace Basement.Tasks
     /// 周期性任务
     /// 按指定周期重复执行的任务
     /// </summary>
-    public class PeriodicTask : TaskBase
+    public class PeriodicTask : TimingTaskBase
     {
         private readonly Action _action;
-        private readonly float _interval;
         private readonly int _repeatCount;
         private int _currentRepeat;
-        private DateTime _lastExecuteTime;
 
-        public PeriodicTask(Action action, float interval, int repeatCount = -1, TaskPriority priority = TaskPriority.Normal)
+        public PeriodicTask(Action action, float interval, int repeatCount = -1, TimingTaskPriority priority = TimingTaskPriority.Normal)
             : base(null, priority, interval)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
-            _interval = interval;
             _repeatCount = repeatCount;
             _currentRepeat = 0;
-            _lastExecuteTime = DateTime.Now;
         }
 
-        public PeriodicTask(string taskId, Action action, float interval, int repeatCount = -1, TaskPriority priority = TaskPriority.Normal)
+        public PeriodicTask(string taskId, Action action, float interval, int repeatCount = -1, TimingTaskPriority priority = TimingTaskPriority.Normal)
             : base(taskId, priority, interval)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
-            _interval = interval;
             _repeatCount = repeatCount;
             _currentRepeat = 0;
-            _lastExecuteTime = DateTime.Now;
         }
 
         public override void Execute()
         {
-            if (State != TaskState.Pending)
+            if (State != TimingTaskState.Ready)
             {
                 return;
             }
 
-            State = TaskState.Running;
+            State = TimingTaskState.Running;
 
             try
             {
                 _action?.Invoke();
                 _currentRepeat++;
-                _lastExecuteTime = DateTime.Now;
 
                 if (_repeatCount > 0 && _currentRepeat >= _repeatCount)
                 {
-                    State = TaskState.Completed;
+                    State = TimingTaskState.Completed;
                     _onCompleted?.Invoke();
-                    LogManager.Instance.LogDebug($"周期任务完成 [TaskId: {TaskId}, 重复次数: {_currentRepeat}]", "PeriodicTask");
                 }
                 else
                 {
-                    State = TaskState.Pending;
-                    ExecuteTime = DateTime.Now.AddSeconds(_interval);
-                    LogManager.Instance.LogDebug($"周期任务继续 [TaskId: {TaskId}, 下次执行: {ExecuteTime}]", "PeriodicTask");
+                    State = TimingTaskState.Ready;
                 }
             }
             catch (Exception ex)
             {
-                State = TaskState.Failed;
+                State = TimingTaskState.Completed;
                 _onFailed?.Invoke(ex);
-                LogManager.Instance.LogError($"周期任务执行失败 [TaskId: {TaskId}]: {ex.Message}", "PeriodicTask");
             }
         }
 
@@ -437,69 +357,20 @@ namespace Basement.Tasks
 
         public int CurrentRepeat => _currentRepeat;
         public int RepeatCount => _repeatCount;
-        public float Interval => _interval;
+        public float Interval => DelayTime;
 
         public override string ToString()
         {
-            return $"PeriodicTask [TaskId: {TaskId}, Interval: {_interval}s, Repeat: {_currentRepeat}/{_repeatCount}]";
+            return $"PeriodicTask [TaskId: {TaskId}, Interval: {DelayTime}s, Repeat: {_currentRepeat}/{_repeatCount}]";
         }
     }
 }
 ```
 
-#### 3.5 定时任务
+#### 3.5 条件任务
 
 ```csharp
 using System;
-using Basement.Logging;
-
-namespace Basement.Tasks
-{
-    /// <summary>
-    /// 定时任务
-    /// 在指定时间执行的任务
-    /// </summary>
-    public class ScheduledTask : TaskBase
-    {
-        private readonly Action _action;
-        private readonly DateTime _scheduledTime;
-
-        public ScheduledTask(Action action, DateTime scheduledTime, TaskPriority priority = TaskPriority.Normal)
-            : base(null, priority, (float)(scheduledTime - DateTime.Now).TotalSeconds)
-        {
-            _action = action ?? throw new ArgumentNullException(nameof(action));
-            _scheduledTime = scheduledTime;
-            ExecuteTime = scheduledTime;
-        }
-
-        public ScheduledTask(string taskId, Action action, DateTime scheduledTime, TaskPriority priority = TaskPriority.Normal)
-            : base(taskId, priority, (float)(scheduledTime - DateTime.Now).TotalSeconds)
-        {
-            _action = action ?? throw new ArgumentNullException(nameof(action));
-            _scheduledTime = scheduledTime;
-            ExecuteTime = scheduledTime;
-        }
-
-        protected override void ExecuteInternal()
-        {
-            _action?.Invoke();
-        }
-
-        public DateTime ScheduledTime => _scheduledTime;
-
-        public override string ToString()
-        {
-            return $"ScheduledTask [TaskId: {TaskId}, ScheduledTime: {_scheduledTime}]";
-        }
-    }
-}
-```
-
-#### 3.6 条件任务
-
-```csharp
-using System;
-using Basement.Logging;
 
 namespace Basement.Tasks
 {
@@ -507,60 +378,46 @@ namespace Basement.Tasks
     /// 条件任务
     /// 当满足指定条件时执行的任务
     /// </summary>
-    public class ConditionalTask : TaskBase
+    public class ConditionalTask : TimingTaskBase
     {
         private readonly Action _action;
         private readonly Func<bool> _condition;
-        private readonly float _checkInterval;
-        private DateTime _lastCheckTime;
 
-        public ConditionalTask(Action action, Func<bool> condition, float checkInterval = 0.1f, TaskPriority priority = TaskPriority.Normal)
+        public ConditionalTask(Action action, Func<bool> condition, float checkInterval = 0.1f, TimingTaskPriority priority = TimingTaskPriority.Normal)
             : base(null, priority, checkInterval)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
             _condition = condition ?? throw new ArgumentNullException(nameof(condition));
-            _checkInterval = checkInterval;
-            _lastCheckTime = DateTime.Now;
         }
 
-        public ConditionalTask(string taskId, Action action, Func<bool> condition, float checkInterval = 0.1f, TaskPriority priority = TaskPriority.Normal)
+        public ConditionalTask(string taskId, Action action, Func<bool> condition, float checkInterval = 0.1f, TimingTaskPriority priority = TimingTaskPriority.Normal)
             : base(taskId, priority, checkInterval)
         {
             _action = action ?? throw new ArgumentNullException(nameof(action));
             _condition = condition ?? throw new ArgumentNullException(nameof(condition));
-            _checkInterval = checkInterval;
-            _lastCheckTime = DateTime.Now;
         }
 
         public override void Execute()
         {
-            if (State != TaskState.Pending)
+            if (State != TimingTaskState.Ready)
             {
                 return;
             }
-
-            _lastCheckTime = DateTime.Now;
 
             try
             {
                 if (_condition())
                 {
-                    State = TaskState.Running;
+                    State = TimingTaskState.Running;
                     _action?.Invoke();
-                    State = TaskState.Completed;
+                    State = TimingTaskState.Completed;
                     _onCompleted?.Invoke();
-                    LogManager.Instance.LogDebug($"条件任务完成 [TaskId: {TaskId}]", "ConditionalTask");
-                }
-                else
-                {
-                    ExecuteTime = DateTime.Now.AddSeconds(_checkInterval);
                 }
             }
             catch (Exception ex)
             {
-                State = TaskState.Failed;
+                State = TimingTaskState.Completed;
                 _onFailed?.Invoke(ex);
-                LogManager.Instance.LogError($"条件任务执行失败 [TaskId: {TaskId}]: {ex.Message}", "ConditionalTask");
             }
         }
 
@@ -569,23 +426,21 @@ namespace Basement.Tasks
             _action?.Invoke();
         }
 
-        public float CheckInterval => _checkInterval;
+        public float CheckInterval => DelayTime;
 
         public override string ToString()
         {
-            return $"ConditionalTask [TaskId: {TaskId}, CheckInterval: {_checkInterval}s]";
+            return $"ConditionalTask [TaskId: {TaskId}, CheckInterval: {DelayTime}s]";
         }
     }
 }
 ```
 
-#### 3.7 任务管理器
+#### 3.6 任务管理器
 
 ```csharp
 using System;
 using System.Collections.Generic;
-using Basement.Logging;
-using Basement.Utils;
 
 namespace Basement.Tasks
 {
@@ -593,29 +448,36 @@ namespace Basement.Tasks
     /// 任务管理器
     /// 负责任务的创建、管理和调度
     /// </summary>
-    public class TaskManager : Singleton<TaskManager>
+    public class TimingTaskManager : Singleton<TimingTaskManager>
     {
-        private readonly Dictionary<string, ITask> _tasks = new Dictionary<string, ITask>();
-        private readonly PriorityQueue<ITask> _taskQueue = new PriorityQueue<ITask>();
+        private readonly Dictionary<string, ITimingTask> _tasks = new Dictionary<string, ITimingTask>();
+        private readonly List<ITimingTask> _taskQueue = new List<ITimingTask>();
         private readonly object _lock = new object();
         private bool _isInitialized = false;
-        private bool _isProcessing = false;
-        private int _maxConcurrentTasks = 10;
 
         public void Initialize()
         {
             if (_isInitialized) return;
 
             _isInitialized = true;
-            LogManager.Instance.LogInfo("任务管理器初始化完成", "TaskManager");
         }
 
         /// <summary>
-        /// 创建延迟任务
+        /// 创建时间触发任务（延迟执行）
         /// </summary>
-        public DelayedTask CreateDelayedTask(Action action, float delay, TaskPriority priority = TaskPriority.Normal)
+        public TimeTriggeredTask CreateTimeTriggeredTask(Action action, float delayTime, TimingTaskPriority priority = TimingTaskPriority.Normal)
         {
-            DelayedTask task = new DelayedTask(action, delay, priority);
+            TimeTriggeredTask task = new TimeTriggeredTask(action, delayTime, priority);
+            RegisterTask(task);
+            return task;
+        }
+
+        /// <summary>
+        /// 创建时间触发任务（定时执行）
+        /// </summary>
+        public TimeTriggeredTask CreateScheduledTask(Action action, DateTime scheduledTime, TimingTaskPriority priority = TimingTaskPriority.Normal)
+        {
+            TimeTriggeredTask task = TimeTriggeredTask.CreateScheduledTask(action, scheduledTime, priority);
             RegisterTask(task);
             return task;
         }
@@ -623,7 +485,7 @@ namespace Basement.Tasks
         /// <summary>
         /// 创建周期性任务
         /// </summary>
-        public PeriodicTask CreatePeriodicTask(Action action, float interval, int repeatCount = -1, TaskPriority priority = TaskPriority.Normal)
+        public PeriodicTask CreatePeriodicTask(Action action, float interval, int repeatCount = -1, TimingTaskPriority priority = TimingTaskPriority.Normal)
         {
             PeriodicTask task = new PeriodicTask(action, interval, repeatCount, priority);
             RegisterTask(task);
@@ -631,34 +493,32 @@ namespace Basement.Tasks
         }
 
         /// <summary>
-        /// 创建定时任务
-        /// </summary>
-        public ScheduledTask CreateScheduledTask(Action action, DateTime scheduledTime, TaskPriority priority = TaskPriority.Normal)
-        {
-            ScheduledTask task = new ScheduledTask(action, scheduledTime, priority);
-            RegisterTask(task);
-            return task;
-        }
-
-        /// <summary>
         /// 创建条件任务
         /// </summary>
-        public ConditionalTask CreateConditionalTask(Action action, Func<bool> condition, float checkInterval = 0.1f, TaskPriority priority = TaskPriority.Normal)
+        public ConditionalTask CreateConditionalTask(Action action, Func<bool> condition, float checkInterval = 0.1f, TimingTaskPriority priority = TimingTaskPriority.Normal)
         {
             ConditionalTask task = new ConditionalTask(action, condition, checkInterval, priority);
             RegisterTask(task);
             return task;
         }
 
-        private void RegisterTask(ITask task)
+        private void RegisterTask(ITimingTask task)
         {
             if (task == null) return;
 
             lock (_lock)
             {
                 _tasks[task.TaskId] = task;
-                _taskQueue.Enqueue(task, (int)task.Priority);
-                LogManager.Instance.LogDebug($"注册任务: {task}", "TaskManager");
+                _taskQueue.Add(task);
+                // 按优先级和延迟时间排序
+                _taskQueue.Sort((a, b) => {
+                    int priorityComparison = b.Priority.CompareTo(a.Priority);
+                    if (priorityComparison == 0)
+                    {
+                        return a.DelayTime.CompareTo(b.DelayTime);
+                    }
+                    return priorityComparison;
+                });
             }
         }
 
@@ -675,47 +535,7 @@ namespace Basement.Tasks
                 {
                     task.Cancel();
                     _tasks.Remove(taskId);
-                    LogManager.Instance.LogDebug($"取消任务: {taskId}", "TaskManager");
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// 暂停任务
-        /// </summary>
-        public bool PauseTask(string taskId)
-        {
-            if (string.IsNullOrEmpty(taskId)) return false;
-
-            lock (_lock)
-            {
-                if (_tasks.TryGetValue(taskId, out var task))
-                {
-                    task.Pause();
-                    LogManager.Instance.LogDebug($"暂停任务: {taskId}", "TaskManager");
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        /// 恢复任务
-        /// </summary>
-        public bool ResumeTask(string taskId)
-        {
-            if (string.IsNullOrEmpty(taskId)) return false;
-
-            lock (_lock)
-            {
-                if (_tasks.TryGetValue(taskId, out var task))
-                {
-                    task.Resume();
-                    LogManager.Instance.LogDebug($"恢复任务: {taskId}", "TaskManager");
+                    _taskQueue.Remove(task);
                     return true;
                 }
             }
@@ -726,7 +546,7 @@ namespace Basement.Tasks
         /// <summary>
         /// 获取任务
         /// </summary>
-        public ITask GetTask(string taskId)
+        public ITimingTask GetTask(string taskId)
         {
             if (string.IsNullOrEmpty(taskId)) return null;
 
@@ -739,11 +559,11 @@ namespace Basement.Tasks
         /// <summary>
         /// 获取所有任务
         /// </summary>
-        public List<ITask> GetAllTasks()
+        public List<ITimingTask> GetAllTasks()
         {
             lock (_lock)
             {
-                return new List<ITask>(_tasks.Values);
+                return new List<ITimingTask>(_tasks.Values);
             }
         }
 
@@ -761,7 +581,6 @@ namespace Basement.Tasks
 
                 _tasks.Clear();
                 _taskQueue.Clear();
-                LogManager.Instance.LogInfo("清空所有任务", "TaskManager");
             }
         }
 
@@ -776,7 +595,7 @@ namespace Basement.Tasks
 
                 foreach (var kvp in _tasks)
                 {
-                    if (kvp.Value.State == TaskState.Completed || kvp.Value.State == TaskState.Cancelled || kvp.Value.State == TaskState.Failed)
+                    if (kvp.Value.State == TimingTaskState.Completed)
                     {
                         completedTaskIds.Add(kvp.Key);
                     }
@@ -785,42 +604,32 @@ namespace Basement.Tasks
                 foreach (string taskId in completedTaskIds)
                 {
                     _tasks.Remove(taskId);
+                    _taskQueue.RemoveAll(t => t.TaskId == taskId);
                 }
-
-                LogManager.Instance.LogInfo($"清空已完成任务: {completedTaskIds.Count}个", "TaskManager");
             }
         }
 
         /// <summary>
         /// 获取任务统计信息
         /// </summary>
-        public TaskStatistics GetStatistics()
+        public TimingTaskStatistics GetStatistics()
         {
             lock (_lock)
             {
-                TaskStatistics stats = new TaskStatistics();
+                TimingTaskStatistics stats = new TimingTaskStatistics();
 
                 foreach (var task in _tasks.Values)
                 {
                     switch (task.State)
                     {
-                        case TaskState.Pending:
-                            stats.PendingCount++;
+                        case TimingTaskState.Ready:
+                            stats.ReadyCount++;
                             break;
-                        case TaskState.Running:
+                        case TimingTaskState.Running:
                             stats.RunningCount++;
                             break;
-                        case TaskState.Completed:
+                        case TimingTaskState.Completed:
                             stats.CompletedCount++;
-                            break;
-                        case TaskState.Cancelled:
-                            stats.CancelledCount++;
-                            break;
-                        case TaskState.Paused:
-                            stats.PausedCount++;
-                            break;
-                        case TaskState.Failed:
-                            stats.FailedCount++;
                             break;
                     }
                 }
@@ -829,45 +638,31 @@ namespace Basement.Tasks
                 return stats;
             }
         }
-
-        /// <summary>
-        /// 设置最大并发任务数
-        /// </summary>
-        public void SetMaxConcurrentTasks(int max)
-        {
-            _maxConcurrentTasks = Math.Max(1, max);
-            LogManager.Instance.LogInfo($"最大并发任务数设置为: {_maxConcurrentTasks}", "TaskManager");
-        }
     }
 
     /// <summary>
     /// 任务统计信息
     /// </summary>
-    public class TaskStatistics
+    public class TimingTaskStatistics
     {
         public int TotalCount { get; set; }
-        public int PendingCount { get; set; }
+        public int ReadyCount { get; set; }
         public int RunningCount { get; set; }
         public int CompletedCount { get; set; }
-        public int CancelledCount { get; set; }
-        public int PausedCount { get; set; }
-        public int FailedCount { get; set; }
 
         public override string ToString()
         {
-            return $"TaskStatistics [Total: {TotalCount}, Pending: {PendingCount}, Running: {RunningCount}, Completed: {CompletedCount}, Cancelled: {CancelledCount}, Paused: {PausedCount}, Failed: {FailedCount}]";
+            return $"TimingTaskStatistics [Total: {TotalCount}, Ready: {ReadyCount}, Running: {RunningCount}, Completed: {CompletedCount}]";
         }
     }
 }
 ```
 
-#### 3.8 任务调度器
+#### 3.7 任务调度器
 
 ```csharp
 using System;
 using System.Collections.Generic;
-using Basement.Logging;
-using Basement.Utils;
 
 namespace Basement.Tasks
 {
@@ -875,9 +670,10 @@ namespace Basement.Tasks
     /// 任务调度器
     /// 负责任务的调度和执行
     /// </summary>
-    public class TaskScheduler : Singleton<TaskScheduler>
+    public class TimingTaskScheduler : Singleton<TimingTaskScheduler>
     {
-        private readonly List<ITask> _activeTasks = new List<ITask>();
+        private readonly List<ITimingTask> _activeTasks = new List<ITimingTask>();
+        private readonly Dictionary<ITimingTask, float> _taskTimers = new Dictionary<ITimingTask, float>();
         private readonly object _lock = new object();
         private bool _isInitialized = false;
         private float _updateInterval = 0.016f; // 约60FPS
@@ -888,7 +684,6 @@ namespace Basement.Tasks
             if (_isInitialized) return;
 
             _isInitialized = true;
-            LogManager.Instance.LogInfo("任务调度器初始化完成", "TaskScheduler");
         }
 
         /// <summary>
@@ -901,37 +696,61 @@ namespace Basement.Tasks
                 return;
             }
 
+            float deltaTime = UnityEngine.Time.time - _lastUpdateTime;
             _lastUpdateTime = UnityEngine.Time.time;
 
-            ProcessTasks();
+            ProcessTasks(deltaTime);
         }
 
-        private void ProcessTasks()
+        private void ProcessTasks(float deltaTime)
         {
             lock (_lock)
             {
-                var allTasks = TaskManager.Instance.GetAllTasks();
-                DateTime currentTime = DateTime.Now;
+                var allTasks = TimingTaskManager.Instance.GetAllTasks();
 
+                // 更新任务计时器
                 foreach (var task in allTasks)
                 {
-                    if (task.State == TaskState.Paused || task.State == TaskState.Cancelled || task.State == TaskState.Completed || task.State == TaskState.Failed)
+                    if (task.State == TimingTaskState.Ready)
                     {
-                        continue;
-                    }
-
-                    if (task.ExecuteTime <= currentTime)
-                    {
-                        if (!_activeTasks.Contains(task))
+                        if (!_taskTimers.ContainsKey(task))
                         {
-                            _activeTasks.Add(task);
-                            task.Execute();
+                            _taskTimers[task] = task.DelayTime;
                         }
+
+                        _taskTimers[task] -= deltaTime;
+
+                        if (_taskTimers[task] <= 0)
+                        {
+                            if (!_activeTasks.Contains(task))
+                            {
+                                _activeTasks.Add(task);
+                                task.Execute();
+
+                                // 对于周期性任务，重置计时器
+                                if (task is PeriodicTask periodicTask && periodicTask.State == TimingTaskState.Ready)
+                                {
+                                    _taskTimers[task] = periodicTask.Interval;
+                                }
+                                else if (task is ConditionalTask conditionalTask && conditionalTask.State == TimingTaskState.Ready)
+                                {
+                                    _taskTimers[task] = conditionalTask.CheckInterval;
+                                }
+                                else
+                                {
+                                    _taskTimers.Remove(task);
+                                }
+                            }
+                        }
+                    }
+                    else if (task.State == TimingTaskState.Completed)
+                    {
+                        _taskTimers.Remove(task);
                     }
                 }
 
                 // 清理已完成的任务
-                _activeTasks.RemoveAll(t => t.State == TaskState.Completed || t.State == TaskState.Cancelled || t.State == TaskState.Failed);
+                _activeTasks.RemoveAll(t => t.State == TimingTaskState.Completed);
             }
         }
 
@@ -941,7 +760,6 @@ namespace Basement.Tasks
         public void SetUpdateInterval(float interval)
         {
             _updateInterval = Math.Max(0.001f, interval);
-            LogManager.Instance.LogInfo($"更新间隔设置为: {_updateInterval}秒", "TaskScheduler");
         }
 
         /// <summary>
