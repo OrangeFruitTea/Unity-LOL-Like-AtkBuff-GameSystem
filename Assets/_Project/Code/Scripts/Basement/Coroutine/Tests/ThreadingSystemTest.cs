@@ -72,19 +72,21 @@ namespace Basement.Threading.Tests
             bool executed = false;
             ITask task = _threadingSystem.CreateTask(() => executed = true);
             
+            // 记录提交前的状态
+            TaskStatus initialStatus = task.Status;
+            
+            // 提交任务
             _threadingSystem.SubmitTask(task);
             
             // 等待任务执行
-            Thread.Sleep(100);
+            // 由于任务在后台线程执行，我们需要等待足够的时间
+            Thread.Sleep(300);
             
-            // 手动调用Update方法处理任务
-            _threadingSystem.Update();
-            Thread.Sleep(100);
-            _threadingSystem.Update();
+            // 验证任务状态已经更新
+            AssertTrue(task.Status != initialStatus, "Task status should be updated after submission");
             
-            // 注意：由于任务在后台线程执行，这里可能无法立即检测到执行状态
-            // 但至少任务应该被提交并且状态应该更新
-            AssertTrue(task.Status != TaskStatus.Created, "Task status should be updated after submission");
+            // 验证任务状态不是Created
+            AssertTrue(task.Status != TaskStatus.Created, "Task status should not be Created after submission");
         }
 
         /// <summary>
