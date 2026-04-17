@@ -44,6 +44,7 @@ namespace Core.Entity
             sceneEntity.BoundEcsEntity = ecsEntity;
             sceneEntity.entityBridge.BoundEcsEntity = ecsEntity;
             AddBaseComponents(ecsEntity, sceneEntity);
+            EntityEcsLinkRegistry.Register(sceneEntity);
             Debug.Log($"SpawnSystem创建ECS实体[ID: {ecsEntity.Id}]，关联场景实体: [{sceneEntity.EntityId}]");
         }
 

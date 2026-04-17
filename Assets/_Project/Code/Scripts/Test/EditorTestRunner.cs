@@ -51,5 +51,30 @@ namespace Test
             // 在Unity控制台输出测试结果
             Debug.Log(summary.ToString());
         }
+
+        /// <summary>
+        /// 运行时序任务模块测试
+        /// 通过Unity编辑器菜单调用
+        /// </summary>
+        [MenuItem("Tests/Run Timing Task Tests")]
+        public static void RunTimingTaskTests()
+        {
+            TestRunner runner = new TestRunner();
+
+            // 添加时序任务模块的测试用例
+            runner.AddTest(new Basement.Tasks.Tests.TimeTriggeredTaskTest());
+            runner.AddTest(new Basement.Tasks.Tests.PeriodicTaskTest());
+            runner.AddTest(new Basement.Tasks.Tests.ConditionalTaskTest());
+            runner.AddTest(new Basement.Tasks.Tests.TimingTaskManagerTest());
+            runner.AddTest(new Basement.Tasks.Tests.TimingTaskSchedulerTest());
+            runner.AddTest(new Basement.Tasks.Tests.TaskPoolTest());
+            runner.AddTest(new Basement.Tasks.Tests.BatchTaskProcessorTest());
+
+            // 运行所有测试
+            TestSummary summary = runner.RunAll();
+
+            // 在Unity控制台输出测试结果
+            Debug.Log(summary.ToString());
+        }
     }
 }

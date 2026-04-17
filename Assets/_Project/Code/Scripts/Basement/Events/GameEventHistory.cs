@@ -15,10 +15,10 @@ namespace Basement.Events
         private int _maxRecords = 1000;
         private bool _isEnabled = false;
 
-        public void Initialize(bool enabled = false, int maxRecords = 1000)
+        public void Initialize(bool isEnabled = false, int maxRecords = 1000)
         {
             _maxRecords = maxRecords;
-            _isEnabled = enabled;
+            _isEnabled = isEnabled;
         }
 
         /// <summary>

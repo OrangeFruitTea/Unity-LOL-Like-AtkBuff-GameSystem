@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Core.Entity;
 using UnityEngine;
+using Basement.Runtime;
 using Basement.Utils;
 
 namespace Core.ECS
@@ -97,6 +98,11 @@ namespace Core.ECS
             {
                 action.Invoke();
             }
+        }
+
+        protected void FixedUpdate()
+        {
+            BasementUnityPump.PumpFixedUpdate();
         }
 
         #region EcsManager

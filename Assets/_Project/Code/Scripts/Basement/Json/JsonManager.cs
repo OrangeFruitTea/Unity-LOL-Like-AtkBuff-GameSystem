@@ -8,13 +8,23 @@ namespace Basement.Json
 {
     public class JsonManager : Singleton<JsonManager>
     {
+        public const string StorageNameGameContent = "GameContent";
+
         private Dictionary<string, IJsonStorage> _storageSystems = new Dictionary<string, IJsonStorage>();
         private IJsonSerializer _defaultSerializer;
+        private IJsonSerializer _gameContentSerializer;
         private IJsonStorage _defaultStorage;
         private bool _isInitialized = false;
 
         public IJsonSerializer DefaultSerializer => _defaultSerializer;
+
+        /// <summary> 只读游戏内容表推荐序列化器（无 TypeNameHandling.Auto）。 </summary>
+        public IJsonSerializer GameContentSerializer => _gameContentSerializer;
+
         public IJsonStorage DefaultStorage => _defaultStorage;
+
+        /// <summary> StreamingAssets 根目录下的只读存储（按 key 存取，与 <see cref="FileJsonStorage"/> 相同安全文件名规则）。 </summary>
+        public IJsonStorage GameContentStorage => GetStorage(StorageNameGameContent);
 
         protected override void Awake()
         {
@@ -32,7 +42,8 @@ namespace Basement.Json
 
             try
             {
-                _defaultSerializer = new NewtonsoftJsonSerializer();
+                _defaultSerializer = new NewtonsoftJsonSerializer(JsonSerializationProfiles.CreateRuntimePersistenceSettings());
+                _gameContentSerializer = new NewtonsoftJsonSerializer(JsonSerializationProfiles.CreateGameContentSettings());
 
                 string persistentDataPath = Path.Combine(Application.persistentDataPath, "JsonData");
                 var fileStorage = new FileJsonStorage(persistentDataPath, _defaultSerializer);
@@ -40,6 +51,12 @@ namespace Basement.Json
 
                 var playerPrefsStorage = new PlayerPrefsJsonStorage(_defaultSerializer);
                 RegisterStorage("PlayerPrefs", playerPrefsStorage);
+
+                string streamingRoot = Application.streamingAssetsPath;
+                if (!Directory.Exists(streamingRoot))
+                    Debug.LogWarning($"[JsonManager] StreamingAssets 目录不存在: {streamingRoot}");
+                var gameContentStorage = new ReadOnlyFileJsonStorage(streamingRoot, _gameContentSerializer);
+                RegisterStorage(StorageNameGameContent, gameContentStorage);
 
                 _defaultStorage = fileStorage;
 
@@ -161,14 +178,93 @@ namespace Basement.Json
             return _defaultSerializer?.Serialize(obj);
         }
 
+        public string Serialize<T>(T obj, JsonSerializerProfile profile)
+        {
+            var serializer = GetSerializer(profile);
+            return serializer?.Serialize(obj);
+        }
+
         public T Deserialize<T>(string json)
         {
             return _defaultSerializer != null ? _defaultSerializer.Deserialize<T>(json) : default;
         }
 
+        public T Deserialize<T>(string json, JsonSerializerProfile profile)
+        {
+            var serializer = GetSerializer(profile);
+            return serializer != null ? serializer.Deserialize<T>(json) : default;
+        }
+
         public object Deserialize(string json, Type type)
         {
             return _defaultSerializer?.Deserialize(json, type);
+        }
+
+        public IJsonSerializer GetSerializer(JsonSerializerProfile profile)
+        {
+            return profile == JsonSerializerProfile.GameContent ? _gameContentSerializer : _defaultSerializer;
+        }
+
+        public JsonReadResult<T> DeserializeWithResult<T>(string json, JsonSerializerProfile profile = JsonSerializerProfile.RuntimePersistence)
+        {
+            if (json == null)
+                return JsonReadResult<T>.Fail("json is null");
+            var serializer = GetSerializer(profile);
+            if (serializer == null)
+                return JsonReadResult<T>.Fail("serializer not initialized");
+            if (!serializer.TryDeserialize(json, out T value, out var err))
+                return JsonReadResult<T>.Fail(err);
+            return JsonReadResult<T>.Ok(value);
+        }
+
+        public bool TryDeserialize<T>(string json, JsonSerializerProfile profile, out T value, out string error)
+        {
+            value = default;
+            error = null;
+            if (json == null)
+            {
+                error = "json is null";
+                return false;
+            }
+
+            var serializer = GetSerializer(profile);
+            if (serializer == null)
+            {
+                error = "serializer not initialized";
+                return false;
+            }
+
+            return serializer.TryDeserialize(json, out value, out error);
+        }
+
+        /// <summary> 从绝对路径读取 UTF-8 文本并反序列化（不经过 <see cref="IJsonStorage"/>）。 </summary>
+        public JsonReadResult<T> DeserializeFromFilePath<T>(string filePath, JsonSerializerProfile profile = JsonSerializerProfile.GameContent)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return JsonReadResult<T>.Fail("filePath is null or empty");
+            if (!File.Exists(filePath))
+                return JsonReadResult<T>.Fail($"file not found: {filePath}");
+
+            string json;
+            try
+            {
+                json = File.ReadAllText(filePath);
+            }
+            catch (Exception ex)
+            {
+                return JsonReadResult<T>.Fail(ex.Message);
+            }
+
+            return DeserializeWithResult<T>(json, profile);
+        }
+
+        /// <summary> 相对 <see cref="Application.streamingAssetsPath"/> 的路径，使用 <see cref="Path.Combine"/> 拼接。 </summary>
+        public JsonReadResult<T> DeserializeFromStreamingAssetsRelative<T>(string relativePath, JsonSerializerProfile profile = JsonSerializerProfile.GameContent)
+        {
+            if (string.IsNullOrEmpty(relativePath))
+                return JsonReadResult<T>.Fail("relativePath is empty");
+            string full = Path.Combine(Application.streamingAssetsPath, relativePath);
+            return DeserializeFromFilePath<T>(full, profile);
         }
 
         public byte[] SerializeToBytes<T>(T obj)
@@ -186,6 +282,7 @@ namespace Basement.Json
             base.OnDestroy();
             _storageSystems.Clear();
             _defaultSerializer = null;
+            _gameContentSerializer = null;
             _defaultStorage = null;
             _isInitialized = false;
         }

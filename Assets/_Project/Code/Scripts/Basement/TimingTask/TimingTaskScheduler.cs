@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Basement.MatchTime;
 using Basement.Utils;
 
 namespace Basement.Tasks
@@ -25,7 +26,7 @@ namespace Basement.Tasks
         }
 
         /// <summary>
-        /// 更新调度器
+        /// 更新调度器（任务计时仅在对局进行中且未暂停时递减，与 <see cref="MatchTimeService"/> 一致）。
         /// </summary>
         public void Update()
         {
@@ -36,6 +37,10 @@ namespace Basement.Tasks
 
             float deltaTime = UnityEngine.Time.time - _lastUpdateTime;
             _lastUpdateTime = UnityEngine.Time.time;
+
+            var match = MatchTimeService.Instance;
+            if (!match.IsMatchActive || match.IsMatchPaused)
+                deltaTime = 0f;
 
             ProcessTasks(deltaTime);
         }

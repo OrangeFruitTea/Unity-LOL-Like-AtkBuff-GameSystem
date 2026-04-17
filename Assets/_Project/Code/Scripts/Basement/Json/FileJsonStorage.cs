@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Basement.Logging;
 
 namespace Basement.Json
 {
@@ -12,12 +11,18 @@ namespace Basement.Json
         private readonly string _rootPath;
         private readonly IJsonSerializer _serializer;
         private readonly string _fileExtension;
+        private readonly IJsonLog _log;
 
-        public FileJsonStorage(string rootPath, IJsonSerializer serializer, string fileExtension = ".json")
+        public FileJsonStorage(
+            string rootPath,
+            IJsonSerializer serializer,
+            string fileExtension = ".json",
+            IJsonLog log = null)
         {
             _rootPath = rootPath;
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _fileExtension = fileExtension;
+            _log = log ?? new DebugJsonLog();
 
             if (!Directory.Exists(_rootPath))
             {
@@ -25,11 +30,8 @@ namespace Basement.Json
             }
         }
 
-        private string GetFilePath(string key)
-        {
-            string safeKey = key.Replace("/", "_").Replace("\\", "_").Replace(":", "_");
-            return Path.Combine(_rootPath, $"{safeKey}{_fileExtension}");
-        }
+        private string GetFilePath(string key) =>
+            JsonStoragePathHelper.GetFilePath(_rootPath, key, _fileExtension);
 
         public void Save<T>(string key, T data)
         {
@@ -48,7 +50,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"保存JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"保存JSON文件失败 [Key: {key}]: {ex.Message}", nameof(FileJsonStorage));
             }
         }
 
@@ -64,11 +66,17 @@ namespace Basement.Json
                 }
 
                 string json = File.ReadAllText(filePath);
-                return _serializer.Deserialize<T>(json);
+                if (!_serializer.TryDeserialize(json, out T value, out var err))
+                {
+                    _log.LogError($"反序列化失败 [Key: {key}]: {err}", nameof(FileJsonStorage));
+                    return default;
+                }
+
+                return value;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"加载JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"加载JSON文件失败 [Key: {key}]: {ex.Message}", nameof(FileJsonStorage));
                 return default;
             }
         }
@@ -92,7 +100,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"删除JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"删除JSON文件失败 [Key: {key}]: {ex.Message}", nameof(FileJsonStorage));
             }
         }
 
@@ -108,7 +116,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"清空JSON存储失败: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"清空JSON存储失败: {ex.Message}", nameof(FileJsonStorage));
             }
         }
 
@@ -144,7 +152,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"异步保存JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"异步保存JSON文件失败 [Key: {key}]: {ex.Message}", nameof(FileJsonStorage));
             }
         }
 
@@ -160,11 +168,17 @@ namespace Basement.Json
                 }
 
                 string json = await File.ReadAllTextAsync(filePath);
-                return _serializer.Deserialize<T>(json);
+                if (!_serializer.TryDeserialize(json, out T value, out var err))
+                {
+                    _log.LogError($"异步反序列化失败 [Key: {key}]: {err}", nameof(FileJsonStorage));
+                    return default;
+                }
+
+                return value;
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"异步加载JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"异步加载JSON文件失败 [Key: {key}]: {ex.Message}", nameof(FileJsonStorage));
                 return default;
             }
         }
@@ -188,7 +202,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"异步删除JSON文件失败 [Key: {key}]: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"异步删除JSON文件失败 [Key: {key}]: {ex.Message}", nameof(FileJsonStorage));
             }
         }
 
@@ -207,7 +221,7 @@ namespace Basement.Json
             }
             catch (Exception ex)
             {
-                LogManager.Instance.LogError($"异步清空JSON存储失败: {ex.Message}", "FileJsonStorage");
+                _log.LogError($"异步清空JSON存储失败: {ex.Message}", nameof(FileJsonStorage));
             }
         }
     }

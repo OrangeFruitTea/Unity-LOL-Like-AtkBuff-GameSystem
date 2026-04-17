@@ -1,11 +1,11 @@
 using UnityEngine;
 using Basement.Events;
+using Basement.Runtime;
 
 namespace Basement.Events.Unity
 {
     /// <summary>
-    /// 事件调度器Unity集成
-    /// 用于在Unity环境中管理事件调度
+    /// 事件调度器 Unity 集成。若由 <see cref="BasementPumpEcsSystem"/> 泵送，则本组件 <c>Update</c> 中不再调用调度器。
     /// </summary>
     public class EventDispatcher : MonoBehaviour
     {
@@ -18,8 +18,9 @@ namespace Basement.Events.Unity
 
         private void Update()
         {
-            // 更新事件调度器
-            GameEventScheduler.Instance.Update();
+            if (BasementLoopRouting.IsEcsPumpActive)
+                return;
+            BasementUnityPump.PumpGameEvents();
         }
 
         private void OnDestroy()

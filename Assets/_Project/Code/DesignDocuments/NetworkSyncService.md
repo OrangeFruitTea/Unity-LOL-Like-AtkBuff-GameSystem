@@ -2,7 +2,7 @@
 
 ## 概述
 
-网络同步服务是核心业务层的核心组件，负责实现基于Photon PUN2框架的多人在线游戏网络同步功能。该服务采用混合同步策略，结合状态同步与事件同步的优势，实现高效、稳定的多端数据同步机制，支持连接管理、房间管理、状态同步、事件同步、延迟处理等核心功能。
+网络同步服务是核心业务层的核心组件，负责实现基于Mirror 96.10.0框架的多人在线游戏网络同步功能。该服务采用混合同步策略，结合状态同步与事件同步的优势，实现高效、稳定的多端数据同步机制，支持连接管理、房间管理、状态同步、事件同步、延迟处理等核心功能。本设计专注于局域网联机功能，同时预留了正常联网服务的接口。
 
 ## 模块架构设计
 
@@ -13,6 +13,7 @@
 - **冲突解决**：实现冲突解决机制，确保多端状态的一致性
 - **性能优化**：通过数据压缩、同步频率优化等手段，提高网络性能
 - **易于扩展**：支持自定义同步策略和网络事件处理
+- **局域网优先**：优先支持局域网联机，同时预留联网服务接口
 
 ### 2. 架构分层
 
@@ -35,8 +36,8 @@
 └─────────────────────────────────────────────────────────────┘
                            ↓
                     ┌─────────────┐
-                    │Photon PUN2  │
-                    │   服务器    │
+                    │  Mirror     │
+                    │  网络框架   │
                     └─────────────┘
 ```
 
@@ -45,104 +46,117 @@
 #### 3.1 网络管理器
 
 ```csharp
-using Photon.Pun;
-using Photon.Realtime;
+using Mirror;
 using UnityEngine;
 using Basement.Utils;
+using System;
 
 namespace Network.Core
 {
     /// <summary>
-    /// Photon网络管理器
-    /// 负责与Photon服务器的连接管理
+    /// Mirror网络管理器
+    /// 负责与Mirror网络的连接管理
     /// </summary>
-    public class PhotonNetworkManager : MonoBehaviourPunCallbacks, IInitializable
+    public class MirrorNetworkManager : NetworkManager, IInitializable
     {
-        private static PhotonNetworkManager _instance;
+        private static MirrorNetworkManager _instance;
 
-        public static PhotonNetworkManager Instance
+        public static MirrorNetworkManager Instance
         {
             get
             {
                 if (_instance == null)
                 {
-                    GameObject obj = new GameObject("[PhotonNetworkManager]");
-                    _instance = obj.AddComponent<PhotonNetworkManager>();
-                    DontDestroyOnLoad(obj);
+                    _instance = FindObjectOfType<MirrorNetworkManager>();
+                    if (_instance == null)
+                    {
+                        GameObject obj = new GameObject("[MirrorNetworkManager]");
+                        _instance = obj.AddComponent<MirrorNetworkManager>();
+                        DontDestroyOnLoad(obj);
+                    }
                 }
                 return _instance;
             }
         }
 
-        public bool IsConnected => PhotonNetwork.IsConnected;
-        public bool IsInRoom => PhotonNetwork.InRoom;
-        public Room CurrentRoom => PhotonNetwork.CurrentRoom;
-        public Player LocalPlayer => PhotonNetwork.LocalPlayer;
+        public bool IsConnected => NetworkClient.isConnected;
+        public bool IsServer => NetworkServer.active;
+        public bool IsClient => NetworkClient.active;
 
-        private PhotonRoomManager _roomManager;
-        private PhotonStateSyncManager _stateSyncManager;
-        private PhotonEventSyncManager _eventSyncManager;
+        private MirrorRoomManager _roomManager;
+        private MirrorStateSyncManager _stateSyncManager;
+        private MirrorEventSyncManager _eventSyncManager;
 
         public void Initialize()
         {
-            // 初始化Photon设置
-            PhotonNetwork.AutomaticallySyncScene = false;
-            PhotonNetwork.SendRate = 20;
-            PhotonNetwork.SerializationRate = 10;
+            // 初始化网络设置
+            networkAddress = "localhost"; // 默认为本地主机
+            port = 7777;
 
             // 初始化子管理器
-            _roomManager = PhotonRoomManager.Instance;
-            _stateSyncManager = PhotonStateSyncManager.Instance;
-            _eventSyncManager = PhotonEventSyncManager.Instance;
+            _roomManager = MirrorRoomManager.Instance;
+            _stateSyncManager = MirrorStateSyncManager.Instance;
+            _eventSyncManager = MirrorEventSyncManager.Instance;
 
-            Debug.Log("Photon网络管理器初始化完成");
+            Debug.Log("Mirror网络管理器初始化完成");
         }
 
-        public void Connect(string appId, string version)
+        public void StartServer()
         {
-            PhotonNetwork.GameVersion = version;
-            PhotonNetwork.ConnectUsingSettings();
-            PhotonNetwork.PhotonServerSettings.AppSettings.AppID = appId;
-
-            Debug.Log($"正在连接Photon服务器... (版本: {version})");
+            NetworkManager.singleton.StartHost();
+            Debug.Log("已启动本地服务器");
         }
 
-        public void Disconnect()
+        public void StartClient(string address = "localhost")
         {
-            PhotonNetwork.Disconnect();
-            Debug.Log("已断开Photon服务器连接");
+            networkAddress = address;
+            NetworkManager.singleton.StartClient();
+            Debug.Log($"正在连接到服务器: {address}");
         }
 
-        public override void OnConnectedToMaster()
+        public void StopNetwork()
         {
-            Debug.Log("已连接到Photon主服务器");
+            if (IsServer)
+            {
+                NetworkManager.singleton.StopHost();
+            }
+            else if (IsClient)
+            {
+                NetworkManager.singleton.StopClient();
+            }
+            Debug.Log("网络已停止");
         }
 
-        public override void OnDisconnected(DisconnectCause cause)
+        public override void OnServerConnect(NetworkConnection conn)
         {
-            Debug.LogError($"与Photon服务器断开连接: {cause}");
+            base.OnServerConnect(conn);
+            Debug.Log($"客户端连接: {conn.connectionId}");
         }
 
-        public override void OnJoinedRoom()
+        public override void OnServerDisconnect(NetworkConnection conn)
         {
-            Debug.Log($"已加入房间: {CurrentRoom.Name}");
+            base.OnServerDisconnect(conn);
+            Debug.Log($"客户端断开连接: {conn.connectionId}");
+        }
+
+        public override void OnClientConnect(NetworkConnection conn)
+        {
+            base.OnClientConnect(conn);
+            Debug.Log("已连接到服务器");
             _stateSyncManager.StartSync();
         }
 
-        public override void OnLeftRoom()
+        public override void OnClientDisconnect(NetworkConnection conn)
         {
-            Debug.Log("已离开房间");
+            base.OnClientDisconnect(conn);
+            Debug.Log("与服务器断开连接");
             _stateSyncManager.StopSync();
         }
 
-        public override void OnPlayerEnteredRoom(Player newPlayer)
+        public override void OnServerAddPlayer(NetworkConnection conn)
         {
-            Debug.Log($"玩家加入房间: {newPlayer.NickName}");
-        }
-
-        public override void OnPlayerLeftRoom(Player otherPlayer)
-        {
-            Debug.Log($"玩家离开房间: {otherPlayer.NickName}");
+            base.OnServerAddPlayer(conn);
+            Debug.Log($"添加玩家: {conn.connectionId}");
         }
     }
 }
@@ -151,8 +165,7 @@ namespace Network.Core
 #### 3.2 房间管理器
 
 ```csharp
-using Photon.Pun;
-using Photon.Realtime;
+using Mirror;
 using UnityEngine;
 using Basement.Utils;
 using System.Collections.Generic;
@@ -160,131 +173,66 @@ using System.Collections.Generic;
 namespace Network.Core
 {
     /// <summary>
-    /// Photon房间管理器
+    /// Mirror房间管理器
     /// 负责房间的创建、加入、搜索、退出等功能
     /// </summary>
-    public class PhotonRoomManager : MonoBehaviourPunCallbacks, IInitializable
+    public class MirrorRoomManager : MonoBehaviour, IInitializable
     {
-        private static PhotonRoomManager _instance;
+        private static MirrorRoomManager _instance;
 
-        public static PhotonRoomManager Instance
+        public static MirrorRoomManager Instance
         {
             get
             {
                 if (_instance == null)
                 {
-                    GameObject obj = new GameObject("[PhotonRoomManager]");
-                    _instance = obj.AddComponent<PhotonRoomManager>();
+                    GameObject obj = new GameObject("[MirrorRoomManager]");
+                    _instance = obj.AddComponent<MirrorRoomManager>();
                     DontDestroyOnLoad(obj);
                 }
                 return _instance;
             }
         }
 
-        public bool IsInRoom => PhotonNetwork.InRoom;
-        public Room CurrentRoom => PhotonNetwork.CurrentRoom;
+        public bool IsInRoom => NetworkClient.isConnected && NetworkServer.active;
+
+        private Dictionary<string, object> _roomProperties = new Dictionary<string, object>();
 
         public void Initialize()
         {
-            Debug.Log("Photon房间管理器初始化完成");
+            Debug.Log("Mirror房间管理器初始化完成");
         }
 
-        public void CreateRoom(string roomName, byte maxPlayers = 8, RoomOptions roomOptions = null)
+        public void CreateRoom(string roomName, int maxPlayers = 8)
         {
-            if (PhotonNetwork.InRoom)
-            {
-                Debug.LogWarning("已经在房间中，无法创建新房间");
-                return;
-            }
-
-            RoomOptions options = roomOptions ?? new RoomOptions
-            {
-                MaxPlayers = maxPlayers,
-                IsVisible = true,
-                IsOpen = true,
-                CustomRoomProperties = new ExitGames.Client.Photon.Hashtable()
-            };
-
-            PhotonNetwork.CreateRoom(roomName, options);
+            // 在Mirror中，房间概念通过NetworkManager和场景管理实现
+            // 启动主机模式即创建房间
+            MirrorNetworkManager.Instance.StartServer();
             Debug.Log($"正在创建房间: {roomName}");
         }
 
-        public void JoinRoom(string roomName)
+        public void JoinRoom(string address)
         {
-            if (PhotonNetwork.InRoom)
-            {
-                Debug.LogWarning("已经在房间中，无法加入新房间");
-                return;
-            }
-
-            PhotonNetwork.JoinRoom(roomName);
-            Debug.Log($"正在加入房间: {roomName}");
-        }
-
-        public void JoinRandomRoom(Hashtable expectedProperties = null)
-        {
-            if (PhotonNetwork.InRoom)
-            {
-                Debug.LogWarning("已经在房间中，无法加入随机房间");
-                return;
-            }
-
-            PhotonNetwork.JoinRandomRoom(expectedProperties);
-            Debug.Log("正在加入随机房间");
+            // 加入指定地址的房间
+            MirrorNetworkManager.Instance.StartClient(address);
+            Debug.Log($"正在加入房间: {address}");
         }
 
         public void LeaveRoom()
         {
-            if (!PhotonNetwork.InRoom)
-            {
-                Debug.LogWarning("不在房间中，无法离开房间");
-                return;
-            }
-
-            PhotonNetwork.LeaveRoom();
+            // 离开房间
+            MirrorNetworkManager.Instance.StopNetwork();
             Debug.Log("正在离开房间");
         }
 
         public void SetRoomProperty(string key, object value)
         {
-            if (!PhotonNetwork.InRoom) return;
-
-            Hashtable properties = new Hashtable { { key, value } };
-            PhotonNetwork.CurrentRoom.SetCustomProperties(properties);
+            _roomProperties[key] = value;
         }
 
         public object GetRoomProperty(string key)
         {
-            if (!PhotonNetwork.InRoom) return null;
-
-            return PhotonNetwork.CurrentRoom.CustomProperties.ContainsKey(key)
-                ? PhotonNetwork.CurrentRoom.CustomProperties[key]
-                : null;
-        }
-
-        public override void OnCreatedRoom()
-        {
-            Debug.Log($"房间创建成功: {CurrentRoom.Name}");
-        }
-
-        public override void OnJoinedRoom()
-        {
-            Debug.Log($"成功加入房间: {CurrentRoom.Name}");
-        }
-
-        public override void OnJoinRoomFailed(short returnCode, string message)
-        {
-            Debug.LogError($"加入房间失败: {message} (错误代码: {returnCode})");
-        }
-
-        public override void OnCreateRoomFailed(short returnCode, string message)
-        {
-            Debug.LogError($"创建房间失败: {message} (错误代码: {returnCode})");
-        }
-
-        public override void OnLeftRoom()
-        {
-            Debug.Log("已离开房间");
+            return _roomProperties.TryGetValue(key, out var value) ? value : null;
         }
     }
 }
@@ -293,7 +241,7 @@ namespace Network.Core
 #### 3.3 状态同步管理器
 
 ```csharp
-using Photon.Pun;
+using Mirror;
 using UnityEngine;
 using Basement.Utils;
 using System.Collections.Generic;
@@ -301,35 +249,35 @@ using System.Collections.Generic;
 namespace Network.Core
 {
     /// <summary>
-    /// Photon状态同步管理器
+    /// Mirror状态同步管理器
     /// 负责游戏对象状态的同步
     /// </summary>
-    public class PhotonStateSyncManager : MonoBehaviourPunCallbacks, IInitializable
+    public class MirrorStateSyncManager : MonoBehaviour, IInitializable
     {
-        private static PhotonStateSyncManager _instance;
+        private static MirrorStateSyncManager _instance;
 
-        public static PhotonStateSyncManager Instance
+        public static MirrorStateSyncManager Instance
         {
             get
             {
                 if (_instance == null)
                 {
-                    GameObject obj = new GameObject("[PhotonStateSyncManager]");
-                    _instance = obj.AddComponent<PhotonStateSyncManager>();
+                    GameObject obj = new GameObject("[MirrorStateSyncManager]");
+                    _instance = obj.AddComponent<MirrorStateSyncManager>();
                     DontDestroyOnLoad(obj);
                 }
                 return _instance;
             }
         }
 
-        private readonly List<PhotonView> _syncedObjects = new List<PhotonView>();
+        private readonly List<NetworkIdentity> _syncedObjects = new List<NetworkIdentity>();
         private float _syncInterval = 0.05f; // 20次/秒
         private float _lastSyncTime = 0f;
         private bool _isSyncing = false;
 
         public void Initialize()
         {
-            Debug.Log("Photon状态同步管理器初始化完成");
+            Debug.Log("Mirror状态同步管理器初始化完成");
         }
 
         public void StartSync()
@@ -344,23 +292,23 @@ namespace Network.Core
             Debug.Log("状态同步已停止");
         }
 
-        public void RegisterSyncObject(PhotonView photonView)
+        public void RegisterSyncObject(NetworkIdentity networkIdentity)
         {
-            if (photonView == null) return;
+            if (networkIdentity == null) return;
 
-            if (!_syncedObjects.Contains(photonView))
+            if (!_syncedObjects.Contains(networkIdentity))
             {
-                _syncedObjects.Add(photonView);
-                Debug.Log($"注册同步对象: {photonView.name}");
+                _syncedObjects.Add(networkIdentity);
+                Debug.Log($"注册同步对象: {networkIdentity.name}");
             }
         }
 
-        public void UnregisterSyncObject(PhotonView photonView)
+        public void UnregisterSyncObject(NetworkIdentity networkIdentity)
         {
-            if (photonView == null) return;
+            if (networkIdentity == null) return;
 
-            _syncedObjects.Remove(photonView);
-            Debug.Log($"注销同步对象: {photonView.name}");
+            _syncedObjects.Remove(networkIdentity);
+            Debug.Log($"注销同步对象: {networkIdentity.name}");
         }
 
         private void Update()
@@ -377,19 +325,8 @@ namespace Network.Core
 
         private void SyncStates()
         {
-            foreach (var photonView in _syncedObjects)
-            {
-                if (photonView == null || !photonView.IsMine) continue;
-
-                // 同步Transform状态
-                if (photonView.ObservedComponents != null && photonView.ObservedComponents.Count > 0)
-                {
-                    photonView.ObservedComponents[0].OnPhotonSerializeView(
-                        new PhotonStream(true, photonView),
-                        photonView.Synchronization
-                    );
-                }
-            }
+            // Mirror会自动处理状态同步
+            // 这里可以添加自定义同步逻辑
         }
 
         public void SetSyncInterval(float interval)
@@ -404,8 +341,7 @@ namespace Network.Core
 #### 3.4 事件同步管理器
 
 ```csharp
-using Photon.Pun;
-using Photon.Realtime;
+using Mirror;
 using UnityEngine;
 using Basement.Utils;
 using System;
@@ -414,35 +350,35 @@ using System.Collections.Generic;
 namespace Network.Core
 {
     /// <summary>
-    /// Photon事件同步管理器
+    /// Mirror事件同步管理器
     /// 负责游戏事件的同步
     /// </summary>
-    public class PhotonEventSyncManager : MonoBehaviourPunCallbacks, IInitializable
+    public class MirrorEventSyncManager : MonoBehaviour, IInitializable
     {
-        private static PhotonEventSyncManager _instance;
+        private static MirrorEventSyncManager _instance;
 
-        public static PhotonEventSyncManager Instance
+        public static MirrorEventSyncManager Instance
         {
             get
             {
                 if (_instance == null)
                 {
-                    GameObject obj = new GameObject("[PhotonEventSyncManager]");
-                    _instance = obj.AddComponent<PhotonEventSyncManager>();
+                    GameObject obj = new GameObject("[MirrorEventSyncManager]");
+                    _instance = obj.AddComponent<MirrorEventSyncManager>();
                     DontDestroyOnLoad(obj);
                 }
                 return _instance;
             }
         }
 
-        private readonly Dictionary<byte, Action<object[]>> _eventHandlers = new Dictionary<byte, Action<object[]>>();
+        private readonly Dictionary<short, Action<NetworkConnection, object[]>> _eventHandlers = new Dictionary<short, Action<NetworkConnection, object[]>>();
 
         public void Initialize()
         {
-            Debug.Log("Photon事件同步管理器初始化完成");
+            Debug.Log("Mirror事件同步管理器初始化完成");
         }
 
-        public void RegisterEventHandler(byte eventCode, Action<object[]> handler)
+        public void RegisterEventHandler(short eventCode, Action<NetworkConnection, object[]> handler)
         {
             if (_eventHandlers.ContainsKey(eventCode))
             {
@@ -456,7 +392,7 @@ namespace Network.Core
             Debug.Log($"注册事件处理器: {eventCode}");
         }
 
-        public void UnregisterEventHandler(byte eventCode, Action<object[]> handler)
+        public void UnregisterEventHandler(short eventCode, Action<NetworkConnection, object[]> handler)
         {
             if (_eventHandlers.ContainsKey(eventCode))
             {
@@ -471,40 +407,43 @@ namespace Network.Core
             }
         }
 
-        public void SendEvent(byte eventCode, object[] data, RaiseEventOptions options = null, SendOptions sendOptions = null)
+        public void SendEvent(short eventCode, object[] data, int channelId = Channels.Default)
         {
-            if (!PhotonNetwork.InRoom)
+            if (!NetworkClient.isConnected)
             {
                 Debug.LogWarning("不在房间中，无法发送事件");
                 return;
             }
 
-            PhotonNetwork.RaiseEvent(eventCode, data, options, sendOptions);
+            NetworkServer.SendToAll(eventCode, new EventMessage { eventCode = eventCode, data = data });
             Debug.Log($"发送事件: {eventCode}");
         }
 
-        public override void OnEnable()
+        [Server]
+        public void SendEventToClient(NetworkConnection conn, short eventCode, object[] data, int channelId = Channels.Default)
         {
-            base.OnEnable();
-            PhotonNetwork.AddCallbackTarget(this);
+            conn.Send(eventCode, new EventMessage { eventCode = eventCode, data = data });
         }
 
-        public override void OnDisable()
+        public void HandleEvent(NetworkConnection conn, EventMessage message)
         {
-            base.OnDisable();
-            PhotonNetwork.RemoveCallbackTarget(this);
-        }
-
-        public void OnEvent(EventData photonEvent)
-        {
-            byte eventCode = photonEvent.Code;
+            short eventCode = message.eventCode;
 
             if (_eventHandlers.TryGetValue(eventCode, out var handler))
             {
-                handler?.Invoke(photonEvent.CustomData as object[]);
+                handler?.Invoke(conn, message.data);
                 Debug.Log($"处理事件: {eventCode}");
             }
         }
+    }
+
+    /// <summary>
+    /// 事件消息结构
+    /// </summary>
+    public class EventMessage : MessageBase
+    {
+        public short eventCode;
+        public object[] data;
     }
 }
 ```
@@ -512,6 +451,7 @@ namespace Network.Core
 #### 3.5 延迟处理器
 
 ```csharp
+using Mirror;
 using UnityEngine;
 using Basement.Utils;
 using System.Collections.Generic;
@@ -522,18 +462,18 @@ namespace Network.Core
     /// 延迟处理器
     /// 负责网络延迟的补偿与处理
     /// </summary>
-    public class PhotonLatencyManager : MonoBehaviour, IInitializable
+    public class MirrorLatencyManager : MonoBehaviour, IInitializable
     {
-        private static PhotonLatencyManager _instance;
+        private static MirrorLatencyManager _instance;
 
-        public static PhotonLatencyManager Instance
+        public static MirrorLatencyManager Instance
         {
             get
             {
                 if (_instance == null)
                 {
-                    GameObject obj = new GameObject("[PhotonLatencyManager]");
-                    _instance = obj.AddComponent<PhotonLatencyManager>();
+                    GameObject obj = new GameObject("[MirrorLatencyManager]");
+                    _instance = obj.AddComponent<MirrorLatencyManager>();
                     DontDestroyOnLoad(obj);
                 }
                 return _instance;
@@ -549,11 +489,11 @@ namespace Network.Core
         public float AverageLatency => _averageLatency;
         public float MaxLatency => _maxLatency;
         public float MinLatency => _minLatency;
-        public float CurrentLatency => PhotonNetwork.GetPing();
+        public float CurrentLatency => NetworkTime.rtt * 1000f; // 转换为毫秒
 
         public void Initialize()
         {
-            Debug.Log("Photon延迟处理器初始化完成");
+            Debug.Log("Mirror延迟处理器初始化完成");
         }
 
         private void Update()
@@ -628,20 +568,39 @@ using Network.Core;
 
 public class NetworkInitializer : MonoBehaviour
 {
-    [SerializeField] private string photonAppId = "YOUR_APP_ID";
-    [SerializeField] private string gameVersion = "1.0.0";
+    [SerializeField] private string networkAddress = "localhost";
+    [SerializeField] private int networkPort = 7777;
 
     private void Start()
     {
         // 初始化网络管理器
-        PhotonNetworkManager.Instance.Initialize();
-        PhotonRoomManager.Instance.Initialize();
-        PhotonStateSyncManager.Instance.Initialize();
-        PhotonEventSyncManager.Instance.Initialize();
-        PhotonLatencyManager.Instance.Initialize();
+        MirrorNetworkManager.Instance.Initialize();
+        MirrorRoomManager.Instance.Initialize();
+        MirrorStateSyncManager.Instance.Initialize();
+        MirrorEventSyncManager.Instance.Initialize();
+        MirrorLatencyManager.Instance.Initialize();
 
-        // 连接到Photon服务器
-        PhotonNetworkManager.Instance.Connect(photonAppId, gameVersion);
+        // 设置网络地址和端口
+        MirrorNetworkManager.Instance.networkAddress = networkAddress;
+        MirrorNetworkManager.Instance.port = networkPort;
+    }
+
+    public void StartHost()
+    {
+        // 启动主机模式（同时作为服务器和客户端）
+        MirrorNetworkManager.Instance.StartServer();
+    }
+
+    public void StartClient(string address = "localhost")
+    {
+        // 启动客户端模式
+        MirrorNetworkManager.Instance.StartClient(address);
+    }
+
+    public void StopNetwork()
+    {
+        // 停止网络
+        MirrorNetworkManager.Instance.StopNetwork();
     }
 }
 ```
@@ -656,29 +615,23 @@ public class RoomManager : MonoBehaviour
 {
     public void CreateGameRoom()
     {
-        // 创建房间
-        PhotonRoomManager.Instance.CreateRoom(
+        // 创建房间（启动主机模式）
+        MirrorRoomManager.Instance.CreateRoom(
             roomName: "MyRoom",
             maxPlayers: 8
         );
     }
 
-    public void JoinGameRoom(string roomName)
+    public void JoinGameRoom(string address)
     {
         // 加入指定房间
-        PhotonRoomManager.Instance.JoinRoom(roomName);
-    }
-
-    public void JoinRandomGameRoom()
-    {
-        // 加入随机房间
-        PhotonRoomManager.Instance.JoinRandomRoom();
+        MirrorRoomManager.Instance.JoinRoom(address);
     }
 
     public void LeaveGameRoom()
     {
         // 离开房间
-        PhotonRoomManager.Instance.LeaveRoom();
+        MirrorRoomManager.Instance.LeaveRoom();
     }
 }
 ```
@@ -686,53 +639,67 @@ public class RoomManager : MonoBehaviour
 ### 3. 同步游戏对象
 
 ```csharp
-using Photon.Pun;
+using Mirror;
 using UnityEngine;
 
-public class NetworkPlayer : MonoBehaviourPun, IPunObservable
+public class NetworkPlayer : NetworkBehaviour
 {
-    private Vector3 _networkPosition;
-    private Quaternion _networkRotation;
-    private PhotonLatencyManager _latencyManager;
+    [SyncVar(hook = nameof(OnPositionChanged))] private Vector3 _networkPosition;
+    [SyncVar(hook = nameof(OnRotationChanged))] private Quaternion _networkRotation;
+    
+    private MirrorLatencyManager _latencyManager;
+    private Vector3 _velocity;
 
     private void Start()
     {
-        _latencyManager = PhotonLatencyManager.Instance;
+        _latencyManager = MirrorLatencyManager.Instance;
 
         // 注册同步对象
-        if (photonView != null)
+        if (netIdentity != null)
         {
-            PhotonStateSyncManager.Instance.RegisterSyncObject(photonView);
-        }
-    }
-
-    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
-    {
-        if (stream.IsWriting)
-        {
-            // 发送本地状态
-            stream.SendNext(transform.position);
-            stream.SendNext(transform.rotation);
-        }
-        else
-        {
-            // 接收远程状态
-            _networkPosition = (Vector3)stream.ReceiveNext();
-            _networkRotation = (Quaternion)stream.ReceiveNext();
-
-            // 延迟补偿
-            float lag = Mathf.Abs((float)(PhotonNetwork.Time - info.SentServerTime));
-            _networkPosition = _latencyManager.PredictPosition(_networkPosition, Vector3.zero, lag);
+            MirrorStateSyncManager.Instance.RegisterSyncObject(netIdentity);
         }
     }
 
     private void Update()
     {
-        if (!photonView.IsMine)
+        if (isLocalPlayer)
+        {
+            // 本地玩家控制逻辑
+            _velocity = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical")) * 5f;
+            transform.position += _velocity * Time.deltaTime;
+            
+            // 更新同步变量
+            _networkPosition = transform.position;
+            _networkRotation = transform.rotation;
+        }
+        else
         {
             // 平滑插值
             transform.position = Vector3.Lerp(transform.position, _networkPosition, Time.deltaTime * 10f);
             transform.rotation = Quaternion.Slerp(transform.rotation, _networkRotation, Time.deltaTime * 10f);
+        }
+    }
+
+    private void OnPositionChanged(Vector3 oldValue, Vector3 newValue)
+    {
+        // 位置变化回调
+        _networkPosition = newValue;
+    }
+
+    private void OnRotationChanged(Quaternion oldValue, Quaternion newValue)
+    {
+        // 旋转变化回调
+        _networkRotation = newValue;
+    }
+
+    public override void OnStopClient()
+    {
+        base.OnStopClient();
+        // 注销同步对象
+        if (netIdentity != null)
+        {
+            MirrorStateSyncManager.Instance.UnregisterSyncObject(netIdentity);
         }
     }
 }
@@ -741,36 +708,39 @@ public class NetworkPlayer : MonoBehaviourPun, IPunObservable
 ### 4. 发送和接收事件
 
 ```csharp
+using Mirror;
 using UnityEngine;
 using Network.Core;
 
-public class GameEventManager : MonoBehaviour
+public class GameEventManager : NetworkBehaviour
 {
-    private const byte EVENT_SKILL_CAST = 1;
-    private const byte EVENT_PLAYER_DAMAGED = 2;
+    private const short EVENT_SKILL_CAST = 1;
+    private const short EVENT_PLAYER_DAMAGED = 2;
 
     private void Start()
     {
         // 注册事件处理器
-        PhotonEventSyncManager.Instance.RegisterEventHandler(EVENT_SKILL_CAST, OnSkillCastEvent);
-        PhotonEventSyncManager.Instance.RegisterEventHandler(EVENT_PLAYER_DAMAGED, OnPlayerDamagedEvent);
+        MirrorEventSyncManager.Instance.RegisterEventHandler(EVENT_SKILL_CAST, OnSkillCastEvent);
+        MirrorEventSyncManager.Instance.RegisterEventHandler(EVENT_PLAYER_DAMAGED, OnPlayerDamagedEvent);
     }
 
-    public void CastSkill(string skillId, Vector3 targetPosition)
+    [Command]
+    public void CmdCastSkill(string skillId, Vector3 targetPosition)
     {
         // 发送技能释放事件
         object[] data = new object[] { skillId, targetPosition };
-        PhotonEventSyncManager.Instance.SendEvent(EVENT_SKILL_CAST, data);
+        MirrorEventSyncManager.Instance.SendEvent(EVENT_SKILL_CAST, data);
     }
 
-    public void DamagePlayer(int playerId, int damage)
+    [Command]
+    public void CmdDamagePlayer(int playerId, int damage)
     {
         // 发送玩家受伤事件
         object[] data = new object[] { playerId, damage };
-        PhotonEventSyncManager.Instance.SendEvent(EVENT_PLAYER_DAMAGED, data);
+        MirrorEventSyncManager.Instance.SendEvent(EVENT_PLAYER_DAMAGED, data);
     }
 
-    private void OnSkillCastEvent(object[] data)
+    private void OnSkillCastEvent(NetworkConnection conn, object[] data)
     {
         string skillId = (string)data[0];
         Vector3 targetPosition = (Vector3)data[1];
@@ -780,7 +750,7 @@ public class GameEventManager : MonoBehaviour
         // 处理技能释放逻辑
     }
 
-    private void OnPlayerDamagedEvent(object[] data)
+    private void OnPlayerDamagedEvent(NetworkConnection conn, object[] data)
     {
         int playerId = (int)data[0];
         int damage = (int)data[1];
@@ -797,22 +767,28 @@ public class GameEventManager : MonoBehaviour
 ### 1. 优化同步频率
 
 ```csharp
-public class OptimizedStateSync : MonoBehaviourPun, IPunObservable
+using Mirror;
+using UnityEngine;
+
+public class OptimizedNetworkPlayer : NetworkBehaviour
 {
+    [SyncVar(hook = nameof(OnPositionChanged))] private Vector3 _networkPosition;
+    [SyncVar(hook = nameof(OnRotationChanged))] private Quaternion _networkRotation;
+    
     private Vector3 _lastPosition;
     private Quaternion _lastRotation;
     private float _syncThreshold = 0.01f;
 
-    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    private void Update()
     {
-        if (stream.IsWriting)
+        if (isLocalPlayer)
         {
-            // 只在状态变化超过阈值时发送
+            // 只在状态变化超过阈值时更新同步变量
             if (Vector3.Distance(transform.position, _lastPosition) > _syncThreshold ||
                 Quaternion.Angle(transform.rotation, _lastRotation) > _syncThreshold)
             {
-                stream.SendNext(transform.position);
-                stream.SendNext(transform.rotation);
+                _networkPosition = transform.position;
+                _networkRotation = transform.rotation;
 
                 _lastPosition = transform.position;
                 _lastRotation = transform.rotation;
@@ -820,9 +796,20 @@ public class OptimizedStateSync : MonoBehaviourPun, IPunObservable
         }
         else
         {
-            _lastPosition = (Vector3)stream.ReceiveNext();
-            _lastRotation = (Quaternion)stream.ReceiveNext();
+            // 平滑插值
+            transform.position = Vector3.Lerp(transform.position, _networkPosition, Time.deltaTime * 10f);
+            transform.rotation = Quaternion.Slerp(transform.rotation, _networkRotation, Time.deltaTime * 10f);
         }
+    }
+
+    private void OnPositionChanged(Vector3 oldValue, Vector3 newValue)
+    {
+        _networkPosition = newValue;
+    }
+
+    private void OnRotationChanged(Quaternion oldValue, Quaternion newValue)
+    {
+        _networkRotation = newValue;
     }
 }
 ```
@@ -830,6 +817,9 @@ public class OptimizedStateSync : MonoBehaviourPun, IPunObservable
 ### 2. 数据压缩
 
 ```csharp
+using Mirror;
+using System;
+
 public class CompressedNetworkData
 {
     public static byte[] CompressVector3(Vector3 vector)
@@ -856,17 +846,29 @@ public class CompressedNetworkData
         return new Vector3(x / 100f, y / 100f, z / 100f);
     }
 }
+
+// 自定义消息示例
+public class CompressedPositionMessage : MessageBase
+{
+    public byte[] compressedPosition;
+    public int playerId;
+}
 ```
 
 ### 3. 批量事件处理
 
 ```csharp
-public class BatchEventProcessor
+using Mirror;
+using UnityEngine;
+using System.Collections.Generic;
+
+public class BatchEventProcessor : MonoBehaviour
 {
     private readonly Queue<object[]> _eventQueue = new Queue<object[]>();
     private const int MaxBatchSize = 10;
     private float _batchInterval = 0.1f;
     private float _lastBatchTime = 0f;
+    private const short EVENT_BATCH = 100;
 
     public void QueueEvent(object[] eventData)
     {
@@ -887,7 +889,7 @@ public class BatchEventProcessor
         _eventQueue.Clear();
 
         // 发送批量事件
-        PhotonEventSyncManager.Instance.SendEvent(EVENT_BATCH, batch);
+        MirrorEventSyncManager.Instance.SendEvent(EVENT_BATCH, batch);
 
         _lastBatchTime = Time.time;
     }
@@ -897,16 +899,24 @@ public class BatchEventProcessor
 ### 4. 自适应同步频率
 
 ```csharp
-public class AdaptiveSyncManager
+using UnityEngine;
+using Network.Core;
+
+public class AdaptiveSyncManager : MonoBehaviour
 {
     private float _currentSyncInterval = 0.05f;
     private float _minSyncInterval = 0.02f;
     private float _maxSyncInterval = 0.1f;
     private float _latencyThreshold = 100f; // 100ms
 
+    private void Update()
+    {
+        UpdateSyncInterval();
+    }
+
     public void UpdateSyncInterval()
     {
-        float latency = PhotonLatencyManager.Instance.AverageLatency;
+        float latency = MirrorLatencyManager.Instance.AverageLatency;
 
         if (latency > _latencyThreshold)
         {
@@ -919,30 +929,41 @@ public class AdaptiveSyncManager
             _currentSyncInterval = Mathf.Max(_currentSyncInterval * 0.9f, _minSyncInterval);
         }
 
-        PhotonStateSyncManager.Instance.SetSyncInterval(_currentSyncInterval);
+        MirrorStateSyncManager.Instance.SetSyncInterval(_currentSyncInterval);
     }
 }
 ```
 
 ## 与Unity引擎的结合点
 
-### 1. PhotonView组件集成
+### 1. NetworkIdentity组件集成
 
 ```csharp
-[RequireComponent(typeof(PhotonView))]
-public class NetworkSyncObject : MonoBehaviourPun, IPunObservable
+[RequireComponent(typeof(NetworkIdentity))]
+public class NetworkSyncObject : NetworkBehaviour
 {
-    private PhotonView _photonView;
+    private NetworkIdentity _networkIdentity;
 
     private void Awake()
     {
-        _photonView = GetComponent<PhotonView>();
-        _photonView.ObservedComponents.Add(this);
+        _networkIdentity = GetComponent<NetworkIdentity>();
     }
 
-    public void OnPhotonSerializeView(PhotonStream stream, PhotonMessageInfo info)
+    [SyncVar(hook = nameof(OnHealthChanged))] private float _health;
+
+    private void OnHealthChanged(float oldValue, float newValue)
     {
-        // 实现状态同步逻辑
+        // 处理生命值变化
+    }
+
+    [Command]
+    public void CmdTakeDamage(float damage)
+    {
+        _health -= damage;
+        if (_health <= 0)
+        {
+            // 处理死亡逻辑
+        }
     }
 }
 ```
@@ -950,19 +971,33 @@ public class NetworkSyncObject : MonoBehaviourPun, IPunObservable
 ### 2. RPC调用
 
 ```csharp
-public class NetworkRPCExample : MonoBehaviourPun
+public class NetworkRPCExample : NetworkBehaviour
 {
-    [PunRPC]
-    public void PlaySound(string soundId)
+    [ClientRpc]
+    public void RpcPlaySound(string soundId)
     {
         // 在所有客户端播放音效
         AudioManager.Instance.PlaySound(soundId);
     }
 
+    [ServerRpc]
+    public void ServerRpcRequestRespawn()
+    {
+        // 服务器处理重生请求
+        // ...
+        RpcRespawn();
+    }
+
+    [ClientRpc]
+    public void RpcRespawn()
+    {
+        // 在客户端执行重生逻辑
+    }
+
     public void TriggerSound()
     {
         // 调用RPC
-        photonView.RPC(nameof(PlaySound), RpcTarget.All, "Explosion");
+        RpcPlaySound("Explosion");
     }
 }
 ```
@@ -970,36 +1005,214 @@ public class NetworkRPCExample : MonoBehaviourPun
 ### 3. 场景同步
 
 ```csharp
-public class NetworkSceneManager : MonoBehaviourPunCallbacks
+using Mirror;
+using UnityEngine.SceneManagement;
+
+public class NetworkSceneManager : NetworkBehaviour
 {
+    [Server]
     public void LoadScene(string sceneName)
     {
-        if (PhotonNetwork.IsMasterClient)
+        NetworkManager.singleton.ServerChangeScene(sceneName);
+    }
+
+    public override void OnSceneChanged(Scene scene, Scene previousScene)
+    {
+        Debug.Log($"场景加载完成: {scene.name}");
+    }
+}
+```
+
+## 局域网联机实现
+
+### 1. 局域网发现服务
+
+```csharp
+using Mirror;
+using UnityEngine;
+using System.Collections.Generic;
+
+public class LANDiscovery : NetworkDiscoveryBase
+{
+    [Header("UI")]
+    public UnityEngine.UI.Text statusText;
+    public UnityEngine.UI.Button startServerButton;
+    public UnityEngine.UI.Button joinButton;
+    public UnityEngine.UI.Dropdown serverDropdown;
+
+    private List<ServerResponse> discoveredServers = new List<ServerResponse>();
+
+    public override void OnServerFound(ServerResponse info)
+    {
+        // 发现新服务器
+        discoveredServers.Add(info);
+        UpdateServerList();
+    }
+
+    public void StartHost()
+    {
+        // 启动主机模式
+        NetworkManager.singleton.StartHost();
+        StartDiscovery();
+        statusText.text = "主机已启动，等待连接...";
+    }
+
+    public void JoinServer()
+    {
+        // 加入选中的服务器
+        if (serverDropdown.value < discoveredServers.Count)
         {
-            PhotonNetwork.LoadLevel(sceneName);
+            ServerResponse server = discoveredServers[serverDropdown.value];
+            NetworkManager.singleton.networkAddress = server.serverAddress;
+            NetworkManager.singleton.StartClient();
+            statusText.text = $"正在连接到 {server.serverAddress}...";
         }
     }
 
-    public override void OnLevelWasLoaded(int level)
+    public void StartDiscovery()
     {
-        Debug.Log($"场景加载完成: {SceneManager.GetSceneByBuildIndex(level).name}");
+        // 开始局域网发现
+        StartDiscoveryAsync();
+        statusText.text = "正在搜索局域网服务器...";
+    }
+
+    private void UpdateServerList()
+    {
+        // 更新服务器列表
+        serverDropdown.ClearOptions();
+        foreach (var server in discoveredServers)
+        {
+            serverDropdown.options.Add(new UnityEngine.UI.Dropdown.OptionData($"{server.serverAddress}:{server.serverPort}"));
+        }
+        joinButton.interactable = discoveredServers.Count > 0;
+    }
+}
+```
+
+### 2. 本地服务器自动发现
+
+```csharp
+using Mirror;
+using UnityEngine;
+using System.Net;
+using System.Net.Sockets;
+
+public class LocalServerDiscovery : MonoBehaviour
+{
+    public static string GetLocalIPAddress()
+    {
+        var host = Dns.GetHostEntry(Dns.GetHostName());
+        foreach (var ip in host.AddressList)
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetwork)
+            {
+                return ip.ToString();
+            }
+        }
+        return "127.0.0.1";
+    }
+
+    public void StartLocalServer()
+    {
+        string localIP = GetLocalIPAddress();
+        MirrorNetworkManager.Instance.networkAddress = localIP;
+        MirrorNetworkManager.Instance.StartServer();
+        Debug.Log($"本地服务器已启动，IP: {localIP}");
+    }
+
+    public void AutoJoinLocalServer()
+    {
+        string localIP = GetLocalIPAddress();
+        MirrorNetworkManager.Instance.StartClient(localIP);
+        Debug.Log($"正在连接到本地服务器: {localIP}");
+    }
+}
+```
+
+## 联网服务接口预留
+
+### 1. 远程服务器连接接口
+
+```csharp
+using Mirror;
+using UnityEngine;
+
+public class RemoteServerManager : MonoBehaviour
+{
+    [SerializeField] private string remoteServerAddress = "your-remote-server.com";
+    [SerializeField] private int remoteServerPort = 7777;
+
+    public void ConnectToRemoteServer()
+    {
+        // 连接到远程服务器
+        MirrorNetworkManager.Instance.networkAddress = remoteServerAddress;
+        MirrorNetworkManager.Instance.port = remoteServerPort;
+        MirrorNetworkManager.Instance.StartClient();
+        Debug.Log($"正在连接到远程服务器: {remoteServerAddress}:{remoteServerPort}");
+    }
+
+    public void ConnectToLocalServer()
+    {
+        // 切换回本地服务器
+        MirrorNetworkManager.Instance.networkAddress = "localhost";
+        MirrorNetworkManager.Instance.port = 7777;
+        MirrorNetworkManager.Instance.StartClient();
+        Debug.Log("正在连接到本地服务器");
+    }
+}
+```
+
+### 2. 网络传输层抽象
+
+```csharp
+using Mirror;
+using UnityEngine;
+
+public class NetworkTransportManager : MonoBehaviour
+{
+    public enum TransportType
+    {
+        Telepathy, // 默认传输
+        KCP,       // 可靠UDP
+        SteamP2P   // Steam P2P
+    }
+
+    public void SetTransport(TransportType transportType)
+    {
+        // 根据类型设置不同的传输层
+        switch (transportType)
+        {
+            case TransportType.Telepathy:
+                NetworkManager.singleton.transport = GetComponent<TelepathyTransport>();
+                break;
+            case TransportType.KCP:
+                NetworkManager.singleton.transport = GetComponent<KcpTransport>();
+                break;
+            case TransportType.SteamP2P:
+                NetworkManager.singleton.transport = GetComponent<SteamP2PTransport>();
+                break;
+        }
+        Debug.Log($"网络传输层已设置为: {transportType}");
     }
 }
 ```
 
 ## 总结
 
-网络同步服务通过基于Photon PUN2框架的混合同步策略，实现了高效、稳定的多端数据同步机制，具有以下优势：
+网络同步服务通过基于Mirror 96.10.0框架的混合同步策略，实现了高效、稳定的多端数据同步机制，具有以下优势：
 
 1. **混合同步策略**：结合状态同步与事件同步的优势，优化网络传输效率
 2. **延迟补偿**：实现延迟补偿机制，减少网络延迟对游戏体验的影响
 3. **冲突解决**：实现冲突解决机制，确保多端状态的一致性
 4. **性能优化**：通过数据压缩、同步频率优化等手段，提高网络性能
 5. **易于扩展**：支持自定义同步策略和网络事件处理
+6. **局域网优先**：优先支持局域网联机，同时预留了联网服务接口
 
 通过使用网络同步服务，项目可以实现高效的多人在线游戏功能，提升游戏体验和可玩性。
 
 ## 参考文档
 
-- [Photon PUN2官方文档](https://doc.photonengine.com/en-us/pun/v2)
-- [PhotonNetworkSystemImplementation.md](../Network/PhotonNetworkSystemImplementation.md) - 详细的网络同步系统实现方案
+- [Mirror Networking官方文档](https://mirror-networking.gitbook.io/docs/)
+- [Mirror Networking GitHub仓库](https://github.com/MirrorNetworking/Mirror)
+- [Unity Mirror Networking教程](https://docs.unity.com/ugs/en-us/manual/relay/manual/mirror)
+- [Mirror Networking最佳实践](https://unitystation.github.io/unitystation/development/SyncVar-Best-Practices-for-Easy-Networking/)

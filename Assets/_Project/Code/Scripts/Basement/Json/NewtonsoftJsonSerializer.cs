@@ -10,14 +10,8 @@ namespace Basement.Json
         private readonly JsonSerializerSettings _settings;
 
         public NewtonsoftJsonSerializer()
+            : this(JsonSerializationProfiles.CreateRuntimePersistenceSettings())
         {
-            _settings = new JsonSerializerSettings
-            {
-                Formatting = Formatting.Indented,
-                NullValueHandling = NullValueHandling.Ignore,
-                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                TypeNameHandling = TypeNameHandling.Auto
-            };
         }
 
         public NewtonsoftJsonSerializer(JsonSerializerSettings settings)
@@ -89,6 +83,56 @@ namespace Basement.Json
             {
                 Debug.LogError($"从字节数组反序列化JSON失败: {ex.Message}");
                 return default;
+            }
+        }
+
+        public bool TryDeserialize<T>(string json, out T value, out string error)
+        {
+            value = default;
+            error = null;
+            if (json == null)
+            {
+                error = "json is null";
+                return false;
+            }
+
+            try
+            {
+                value = JsonConvert.DeserializeObject<T>(json, _settings);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public bool TryDeserialize(string json, Type type, out object value, out string error)
+        {
+            value = null;
+            error = null;
+            if (json == null)
+            {
+                error = "json is null";
+                return false;
+            }
+
+            if (type == null)
+            {
+                error = "type is null";
+                return false;
+            }
+
+            try
+            {
+                value = JsonConvert.DeserializeObject(json, type, _settings);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                return false;
             }
         }
     }

@@ -22,6 +22,7 @@ namespace Core.Entity
 
         protected void OnDestroy()
         {
+            EntityEcsLinkRegistry.Unregister(this);
             if (BoundEcsEntity.Id != 0 
                 && EcsWorld.Instance != null
                 && EcsWorld.Instance.EcsManager != null)

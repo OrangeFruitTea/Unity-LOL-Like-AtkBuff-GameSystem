@@ -34,7 +34,8 @@ namespace Basement.Utils
                             {
                                 var singletonObj = new GameObject($"[Singleton_{typeof(T).Name}]");
                                 _instance = singletonObj.AddComponent<T>();
-                                DontDestroyOnLoad(singletonObj);
+                                if(Application.isPlaying)
+                                    DontDestroyOnLoad(singletonObj);
                                 Debug.Log($"自动创建Singleton<{typeof(T).Name}>实例");
                             }
                         }
