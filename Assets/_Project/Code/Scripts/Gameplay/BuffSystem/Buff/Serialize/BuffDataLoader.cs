@@ -23,6 +23,10 @@ public class BuffDataLoader : MonoBehaviour
     private Dictionary<int, BuffJsonData> _buffDataMap = new Dictionary<int, BuffJsonData>();
     public static BuffDataLoader Instance { get; private set; }
 
+    /// <summary> 配置是否已加载且包含指定 id（技能管线校验 Buff 表用）。 </summary>
+    public bool TryGet(int buffId, out BuffJsonData data) =>
+        _buffDataMap.TryGetValue(buffId, out data);
+
     private void Awake()
     {
         if (Instance == null)

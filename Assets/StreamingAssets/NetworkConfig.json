@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "defaultListenPort": 7777,
+  "fallbackBindAddressOrEmpty": "",
+  "discoveryKeyOrEmpty": ""
+}

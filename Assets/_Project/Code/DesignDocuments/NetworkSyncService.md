@@ -1,1218 +1,281 @@
-# 网络同步服务技术文档
+# 网络同步服务设计说明书（Mirror）
 
-## 概述
+| 属性 | 说明 |
+|------|------|
+| 文档类型 | 软件设计说明（轻量化、可对齐毕业论文「系统设计与实现」章节） |
+| 版本 | 2.0 |
+| 运行时依赖 | Unity 项目已集成 **Mirror**（`Assets/ThirdParty/Mirror`）；传输层以实现为准（如内置 Telepathy/KCP） |
+| 对齐资产 | Mirror 自带的 **脚本模板**：`ThirdParty/Mirror/ScriptTemplates`（本章 §3 逐项映射） |
+| 外文参考 | Mirror 文档：[Network Manager](https://mirror-networking.gitbook.io/docs/components/network-manager)、[NetworkBehaviour](https://mirror-networking.gitbook.io/docs/guides/networkbehaviour) |
 
-网络同步服务是核心业务层的核心组件，负责实现基于Mirror 96.10.0框架的多人在线游戏网络同步功能。该服务采用混合同步策略，结合状态同步与事件同步的优势，实现高效、稳定的多端数据同步机制，支持连接管理、房间管理、状态同步、事件同步、延迟处理等核心功能。本设计专注于局域网联机功能，同时预留了正常联网服务的接口。
+---
 
-## 模块架构设计
+## 1. 摘要
 
-### 1. 设计目标
+本说明书定义游戏客户端在多人场景下的**网络同步边界**与**与 Mirror API 的对齐关系**。设计目标面向**本科毕业设计**常见规模：**局域网（LAN）对战可玩、服务端权威清晰、易于演示与答辩**，同时为将来接入远程服务器保留**最小扩展点**。
 
-- **混合同步策略**：结合状态同步与事件同步的优势，优化网络传输效率
-- **延迟补偿**：实现延迟补偿机制，减少网络延迟对游戏体验的影响
-- **冲突解决**：实现冲突解决机制，确保多端状态的一致性
-- **性能优化**：通过数据压缩、同步频率优化等手段，提高网络性能
-- **易于扩展**：支持自定义同步策略和网络事件处理
-- **局域网优先**：优先支持局域网联机，同时预留联网服务接口
+**不在本文档范畴**：底层传输协议选型细节、ECS 与非 Mirror 逻辑的接口实现代码、商业化反作弊与安全运营体系。
 
-### 2. 架构分层
+---
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    业务逻辑层                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ 角色系统    │  │ 技能系统    │  │ 对战系统    │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│                    网络同步服务                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ 连接管理器   │  │ 房间管理器  │  │ 状态同步器  │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  │
-│  │ 事件同步器  │  │ 延迟处理器  │  │ 冲突解决器  │  │
-│  └─────────────┘  └─────────────┘  └─────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                           ↓
-                    ┌─────────────┐
-                    │  Mirror     │
-                    │  网络框架   │
-                    └─────────────┘
-```
+## 2. 目标与非目标
 
-### 3. 核心组件
+### 2.1 设计目标（必须）
 
-#### 3.1 网络管理器
+| ID | 目标 | 验收要点 |
+|----|------|----------|
+| G-ARCH | **架构可追溯**：任一网络行为能说清「谁权威、在哪一侧执行、如何用 Mirror API 落地」 | 答辩时可对照本章表格说明 |
+| G-AUTH | **服务端权威**：位置/血量/胜负等Gameplay状态以服务端为准 | 不出现「客户端单方改关键状态且无校验」的长期方案 |
+| G-MIRROR | **与 Mirror 原生模型一致**：`NetworkManager`、`NetworkBehaviour`、生成物（Spawn）、消息模式 | 新代码优先从 ScriptTemplates 派生而非重复造轮子 |
+| G-LAN | **局域网可达**：同网段宿主/客机可连、断线有可解释行为（至少日志+UI反馈） | 演示视频可录制 |
+| G-DEMO | **可维护的适度抽象**：会话、房间、关卡切换有清晰状态机叙述 | 代码量与复杂度适合单人毕业设计 |
 
-```csharp
-using Mirror;
-using UnityEngine;
-using Basement.Utils;
-using System;
+### 2.2 非目标（明确排除或降级）
 
-namespace Network.Core
-{
-    /// <summary>
-    /// Mirror网络管理器
-    /// 负责与Mirror网络的连接管理
-    /// </summary>
-    public class MirrorNetworkManager : NetworkManager, IInitializable
-    {
-        private static MirrorNetworkManager _instance;
+| 类型 | 说明 |
+|------|------|
+| 大规模分布式 | 不设计分片大区、不写复杂网关 |
+| 完整延迟补偿射击 | **标注为未来工作**；本篇仅预留「插值预测」原则性描述 |
+| 数据压缩专有协议 | 以 Mirror 内置序列化体积与按需同步为主；专有压缩非必需 |
+| 全球低延迟 QoS | LAN 与外网占位接口即可 |
 
-        public static MirrorNetworkManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    _instance = FindObjectOfType<MirrorNetworkManager>();
-                    if (_instance == null)
-                    {
-                        GameObject obj = new GameObject("[MirrorNetworkManager]");
-                        _instance = obj.AddComponent<MirrorNetworkManager>();
-                        DontDestroyOnLoad(obj);
-                    }
-                }
-                return _instance;
-            }
-        }
+---
 
-        public bool IsConnected => NetworkClient.isConnected;
-        public bool IsServer => NetworkServer.active;
-        public bool IsClient => NetworkClient.active;
+## 3. 与 Mirror 脚本模板对齐
 
-        private MirrorRoomManager _roomManager;
-        private MirrorStateSyncManager _stateSyncManager;
-        private MirrorEventSyncManager _eventSyncManager;
+项目内已通过 Unity 菜单 **Create → Mirror → …** 生成脚本时使用以下模板路径（与实际文件名一致）：
 
-        public void Initialize()
-        {
-            // 初始化网络设置
-            networkAddress = "localhost"; // 默认为本地主机
-            port = 7777;
+| Script Template（`ThirdParty/Mirror/ScriptTemplates`） | 用途 | 本设计引用方式 |
+|----------------------------------------------------------|------|----------------|
+| `50-Mirror__Network Manager-NewNetworkManager.cs.txt` | 自定义 **NetworkManager**、生命周期钩子 | §6.2 会话与场景 |
+| `51-Mirror__Network Manager With Actions-NewNetworkManagerWithActions.cs.txt` | 在钩子中转发 **UnityEvent/Action**，利于 UI/系统解耦 | 可选：**演示层**与 **业务层**解耦时使用 |
+| `52-Mirror__Network Behaviour-NewNetworkBehaviour.cs.txt` | **NetworkBehaviour**：`OnStartServer` / `OnStartClient` 等 | §5 同步构件 |
+| `53-Mirror__Network Behaviour With Actions-NewNetworkBehaviourWithActions.cs.txt` | 生命周期 **Action**，便于拼装子系统监听 | §7 推荐用于「薄适配层」 |
+| `52-Mirror__Network Authenticator-NewNetworkAuthenticator.cs.txt` | **NetworkAuthenticator**：入网前握手 | LAN 可走空实现或使用模板扩展令牌；外网占位 |
+| `54-Mirror__Network Room Manager-NewNetworkRoomManager.cs.txt` | **NetworkRoomManager**：房间槽位与 Ready→切局 | §6.4 组队/房间内流程（可选用） |
+| `55-Mirror__Network Room Player-NewNetworkRoomPlayer.cs.txt` | **NetworkRoomPlayer** 预制体配套 | 与 Room Manager 成对使用 |
+| `56-Mirror__Network Discovery-NewNetworkDiscovery.cs.txt` | **局域网发现** UDP 广播 | §8 LAN 演示 |
+| `57-Mirror__Network Transform-NewNetworkTransform.cs.txt` | 位姿同步（或等价组件） | 移动体同步优先考虑官方方案 |
+| `54-Mirror__Custom Interest Management-CustomInterestManagement.cs.txt` | **兴趣管理 AoI** 自定义 | §5.5 可选优化（非 MVP 必选） |
 
-            // 初始化子管理器
-            _roomManager = MirrorRoomManager.Instance;
-            _stateSyncManager = MirrorStateSyncManager.Instance;
-            _eventSyncManager = MirrorEventSyncManager.Instance;
+> **约定**：上文「文件名」均以仓库内 Mirror 附带模板为准；实现类名由项目自定，说明书只约束**职责分层**与**钩子的语义**。
 
-            Debug.Log("Mirror网络管理器初始化完成");
-        }
+---
 
-        public void StartServer()
-        {
-            NetworkManager.singleton.StartHost();
-            Debug.Log("已启动本地服务器");
-        }
+## 4. 总体架构
 
-        public void StartClient(string address = "localhost")
-        {
-            networkAddress = address;
-            NetworkManager.singleton.StartClient();
-            Debug.Log($"正在连接到服务器: {address}");
-        }
+### 4.1 分层视图
 
-        public void StopNetwork()
-        {
-            if (IsServer)
-            {
-                NetworkManager.singleton.StopHost();
-            }
-            else if (IsClient)
-            {
-                NetworkManager.singleton.StopClient();
-            }
-            Debug.Log("网络已停止");
-        }
+逻辑上仍可区分「业务Gameplay」与「网络适配」，但**不得在业务层手写 socket**；适配层只做 **Mirror 语义封装**。
 
-        public override void OnServerConnect(NetworkConnection conn)
-        {
-            base.OnServerConnect(conn);
-            Debug.Log($"客户端连接: {conn.connectionId}");
-        }
-
-        public override void OnServerDisconnect(NetworkConnection conn)
-        {
-            base.OnServerDisconnect(conn);
-            Debug.Log($"客户端断开连接: {conn.connectionId}");
-        }
-
-        public override void OnClientConnect(NetworkConnection conn)
-        {
-            base.OnClientConnect(conn);
-            Debug.Log("已连接到服务器");
-            _stateSyncManager.StartSync();
-        }
-
-        public override void OnClientDisconnect(NetworkConnection conn)
-        {
-            base.OnClientDisconnect(conn);
-            Debug.Log("与服务器断开连接");
-            _stateSyncManager.StopSync();
-        }
-
-        public override void OnServerAddPlayer(NetworkConnection conn)
-        {
-            base.OnServerAddPlayer(conn);
-            Debug.Log($"添加玩家: {conn.connectionId}");
-        }
-    }
-}
+```text
+┌─────────────────────────────────────────────────────────┐
+│  Gameplay（角色、技能、局内规则）                          │
+│  — 仅以「权威状态或服务端入口」改写世界                     │
+└───────────────────────────┬───────────────────────────────┘
+                            │ 调用服务端入口 / 读同步状态
+┌───────────────────────────▼───────────────────────────────┐
+│  Network Adaptation（薄层）                               │
+│  · SyncVar / Hooks · [Command] / ClientRpc TargetRpc      │
+│  · Serialize / Spawn 约定 · Messages（必要时）               │
+└───────────────────────────┬───────────────────────────────┘
+                            │ Mirror API
+┌───────────────────────────▼───────────────────────────────┐
+│  Mirror                                                   │
+│  NetworkServer / NetworkClient · Spawn · Identity ·       │
+│  Transport                                                │
+└───────────────────────────────────────────────────────────┘
 ```
 
-#### 3.2 房间管理器
-
-```csharp
-using Mirror;
-using UnityEngine;
-using Basement.Utils;
-using System.Collections.Generic;
-
-namespace Network.Core
-{
-    /// <summary>
-    /// Mirror房间管理器
-    /// 负责房间的创建、加入、搜索、退出等功能
-    /// </summary>
-    public class MirrorRoomManager : MonoBehaviour, IInitializable
-    {
-        private static MirrorRoomManager _instance;
-
-        public static MirrorRoomManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    GameObject obj = new GameObject("[MirrorRoomManager]");
-                    _instance = obj.AddComponent<MirrorRoomManager>();
-                    DontDestroyOnLoad(obj);
-                }
-                return _instance;
-            }
-        }
-
-        public bool IsInRoom => NetworkClient.isConnected && NetworkServer.active;
-
-        private Dictionary<string, object> _roomProperties = new Dictionary<string, object>();
-
-        public void Initialize()
-        {
-            Debug.Log("Mirror房间管理器初始化完成");
-        }
-
-        public void CreateRoom(string roomName, int maxPlayers = 8)
-        {
-            // 在Mirror中，房间概念通过NetworkManager和场景管理实现
-            // 启动主机模式即创建房间
-            MirrorNetworkManager.Instance.StartServer();
-            Debug.Log($"正在创建房间: {roomName}");
-        }
-
-        public void JoinRoom(string address)
-        {
-            // 加入指定地址的房间
-            MirrorNetworkManager.Instance.StartClient(address);
-            Debug.Log($"正在加入房间: {address}");
-        }
-
-        public void LeaveRoom()
-        {
-            // 离开房间
-            MirrorNetworkManager.Instance.StopNetwork();
-            Debug.Log("正在离开房间");
-        }
-
-        public void SetRoomProperty(string key, object value)
-        {
-            _roomProperties[key] = value;
-        }
-
-        public object GetRoomProperty(string key)
-        {
-            return _roomProperties.TryGetValue(key, out var value) ? value : null;
-        }
-    }
-}
-```
-
-#### 3.3 状态同步管理器
-
-```csharp
-using Mirror;
-using UnityEngine;
-using Basement.Utils;
-using System.Collections.Generic;
-
-namespace Network.Core
-{
-    /// <summary>
-    /// Mirror状态同步管理器
-    /// 负责游戏对象状态的同步
-    /// </summary>
-    public class MirrorStateSyncManager : MonoBehaviour, IInitializable
-    {
-        private static MirrorStateSyncManager _instance;
-
-        public static MirrorStateSyncManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    GameObject obj = new GameObject("[MirrorStateSyncManager]");
-                    _instance = obj.AddComponent<MirrorStateSyncManager>();
-                    DontDestroyOnLoad(obj);
-                }
-                return _instance;
-            }
-        }
-
-        private readonly List<NetworkIdentity> _syncedObjects = new List<NetworkIdentity>();
-        private float _syncInterval = 0.05f; // 20次/秒
-        private float _lastSyncTime = 0f;
-        private bool _isSyncing = false;
-
-        public void Initialize()
-        {
-            Debug.Log("Mirror状态同步管理器初始化完成");
-        }
-
-        public void StartSync()
-        {
-            _isSyncing = true;
-            Debug.Log("状态同步已启动");
-        }
-
-        public void StopSync()
-        {
-            _isSyncing = false;
-            Debug.Log("状态同步已停止");
-        }
-
-        public void RegisterSyncObject(NetworkIdentity networkIdentity)
-        {
-            if (networkIdentity == null) return;
-
-            if (!_syncedObjects.Contains(networkIdentity))
-            {
-                _syncedObjects.Add(networkIdentity);
-                Debug.Log($"注册同步对象: {networkIdentity.name}");
-            }
-        }
-
-        public void UnregisterSyncObject(NetworkIdentity networkIdentity)
-        {
-            if (networkIdentity == null) return;
-
-            _syncedObjects.Remove(networkIdentity);
-            Debug.Log($"注销同步对象: {networkIdentity.name}");
-        }
-
-        private void Update()
-        {
-            if (!_isSyncing) return;
-
-            // 定期同步状态
-            if (Time.time - _lastSyncTime >= _syncInterval)
-            {
-                SyncStates();
-                _lastSyncTime = Time.time;
-            }
-        }
-
-        private void SyncStates()
-        {
-            // Mirror会自动处理状态同步
-            // 这里可以添加自定义同步逻辑
-        }
-
-        public void SetSyncInterval(float interval)
-        {
-            _syncInterval = Mathf.Max(0.01f, interval);
-            Debug.Log($"同步间隔设置为: {_syncInterval}秒");
-        }
-    }
-}
-```
-
-#### 3.4 事件同步管理器
-
-```csharp
-using Mirror;
-using UnityEngine;
-using Basement.Utils;
-using System;
-using System.Collections.Generic;
-
-namespace Network.Core
-{
-    /// <summary>
-    /// Mirror事件同步管理器
-    /// 负责游戏事件的同步
-    /// </summary>
-    public class MirrorEventSyncManager : MonoBehaviour, IInitializable
-    {
-        private static MirrorEventSyncManager _instance;
-
-        public static MirrorEventSyncManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    GameObject obj = new GameObject("[MirrorEventSyncManager]");
-                    _instance = obj.AddComponent<MirrorEventSyncManager>();
-                    DontDestroyOnLoad(obj);
-                }
-                return _instance;
-            }
-        }
-
-        private readonly Dictionary<short, Action<NetworkConnection, object[]>> _eventHandlers = new Dictionary<short, Action<NetworkConnection, object[]>>();
-
-        public void Initialize()
-        {
-            Debug.Log("Mirror事件同步管理器初始化完成");
-        }
-
-        public void RegisterEventHandler(short eventCode, Action<NetworkConnection, object[]> handler)
-        {
-            if (_eventHandlers.ContainsKey(eventCode))
-            {
-                _eventHandlers[eventCode] += handler;
-            }
-            else
-            {
-                _eventHandlers[eventCode] = handler;
-            }
-
-            Debug.Log($"注册事件处理器: {eventCode}");
-        }
-
-        public void UnregisterEventHandler(short eventCode, Action<NetworkConnection, object[]> handler)
-        {
-            if (_eventHandlers.ContainsKey(eventCode))
-            {
-                _eventHandlers[eventCode] -= handler;
-
-                if (_eventHandlers[eventCode] == null)
-                {
-                    _eventHandlers.Remove(eventCode);
-                }
-
-                Debug.Log($"注销事件处理器: {eventCode}");
-            }
-        }
-
-        public void SendEvent(short eventCode, object[] data, int channelId = Channels.Default)
-        {
-            if (!NetworkClient.isConnected)
-            {
-                Debug.LogWarning("不在房间中，无法发送事件");
-                return;
-            }
-
-            NetworkServer.SendToAll(eventCode, new EventMessage { eventCode = eventCode, data = data });
-            Debug.Log($"发送事件: {eventCode}");
-        }
-
-        [Server]
-        public void SendEventToClient(NetworkConnection conn, short eventCode, object[] data, int channelId = Channels.Default)
-        {
-            conn.Send(eventCode, new EventMessage { eventCode = eventCode, data = data });
-        }
-
-        public void HandleEvent(NetworkConnection conn, EventMessage message)
-        {
-            short eventCode = message.eventCode;
-
-            if (_eventHandlers.TryGetValue(eventCode, out var handler))
-            {
-                handler?.Invoke(conn, message.data);
-                Debug.Log($"处理事件: {eventCode}");
-            }
-        }
-    }
-
-    /// <summary>
-    /// 事件消息结构
-    /// </summary>
-    public class EventMessage : MessageBase
-    {
-        public short eventCode;
-        public object[] data;
-    }
-}
-```
-
-#### 3.5 延迟处理器
-
-```csharp
-using Mirror;
-using UnityEngine;
-using Basement.Utils;
-using System.Collections.Generic;
-
-namespace Network.Core
-{
-    /// <summary>
-    /// 延迟处理器
-    /// 负责网络延迟的补偿与处理
-    /// </summary>
-    public class MirrorLatencyManager : MonoBehaviour, IInitializable
-    {
-        private static MirrorLatencyManager _instance;
-
-        public static MirrorLatencyManager Instance
-        {
-            get
-            {
-                if (_instance == null)
-                {
-                    GameObject obj = new GameObject("[MirrorLatencyManager]");
-                    _instance = obj.AddComponent<MirrorLatencyManager>();
-                    DontDestroyOnLoad(obj);
-                }
-                return _instance;
-            }
-        }
-
-        private readonly Queue<float> _latencyHistory = new Queue<float>();
-        private const int MaxHistorySize = 30;
-        private float _averageLatency = 0f;
-        private float _maxLatency = 0f;
-        private float _minLatency = float.MaxValue;
-
-        public float AverageLatency => _averageLatency;
-        public float MaxLatency => _maxLatency;
-        public float MinLatency => _minLatency;
-        public float CurrentLatency => NetworkTime.rtt * 1000f; // 转换为毫秒
-
-        public void Initialize()
-        {
-            Debug.Log("Mirror延迟处理器初始化完成");
-        }
-
-        private void Update()
-        {
-            UpdateLatency();
-        }
-
-        private void UpdateLatency()
-        {
-            float currentLatency = CurrentLatency;
-
-            if (currentLatency <= 0) return;
-
-            // 更新延迟历史
-            _latencyHistory.Enqueue(currentLatency);
-
-            if (_latencyHistory.Count > MaxHistorySize)
-            {
-                _latencyHistory.Dequeue();
-            }
-
-            // 计算统计数据
-            CalculateLatencyStats();
-        }
-
-        private void CalculateLatencyStats()
-        {
-            float sum = 0f;
-            _maxLatency = 0f;
-            _minLatency = float.MaxValue;
-
-            foreach (float latency in _latencyHistory)
-            {
-                sum += latency;
-                _maxLatency = Mathf.Max(_maxLatency, latency);
-                _minLatency = Mathf.Min(_minLatency, latency);
-            }
-
-            _averageLatency = sum / _latencyHistory.Count;
-        }
-
-        public Vector3 PredictPosition(Vector3 currentPosition, Vector3 velocity, float predictionTime = 0f)
-        {
-            if (predictionTime <= 0f)
-            {
-                predictionTime = _averageLatency / 1000f;
-            }
-
-            return currentPosition + velocity * predictionTime;
-        }
-
-        public Vector3 InterpolatePosition(Vector3 startPos, Vector3 endPos, float t)
-        {
-            return Vector3.Lerp(startPos, endPos, t);
-        }
-
-        public Quaternion InterpolateRotation(Quaternion startRot, Quaternion endRot, float t)
-        {
-            return Quaternion.Slerp(startRot, endRot, t);
-        }
-    }
-}
-```
-
-## 使用说明
-
-### 1. 初始化网络服务
-
-```csharp
-using UnityEngine;
-using Network.Core;
-
-public class NetworkInitializer : MonoBehaviour
-{
-    [SerializeField] private string networkAddress = "localhost";
-    [SerializeField] private int networkPort = 7777;
-
-    private void Start()
-    {
-        // 初始化网络管理器
-        MirrorNetworkManager.Instance.Initialize();
-        MirrorRoomManager.Instance.Initialize();
-        MirrorStateSyncManager.Instance.Initialize();
-        MirrorEventSyncManager.Instance.Initialize();
-        MirrorLatencyManager.Instance.Initialize();
-
-        // 设置网络地址和端口
-        MirrorNetworkManager.Instance.networkAddress = networkAddress;
-        MirrorNetworkManager.Instance.port = networkPort;
-    }
-
-    public void StartHost()
-    {
-        // 启动主机模式（同时作为服务器和客户端）
-        MirrorNetworkManager.Instance.StartServer();
-    }
-
-    public void StartClient(string address = "localhost")
-    {
-        // 启动客户端模式
-        MirrorNetworkManager.Instance.StartClient(address);
-    }
-
-    public void StopNetwork()
-    {
-        // 停止网络
-        MirrorNetworkManager.Instance.StopNetwork();
-    }
-}
-```
-
-### 2. 创建和加入房间
-
-```csharp
-using UnityEngine;
-using Network.Core;
-
-public class RoomManager : MonoBehaviour
-{
-    public void CreateGameRoom()
-    {
-        // 创建房间（启动主机模式）
-        MirrorRoomManager.Instance.CreateRoom(
-            roomName: "MyRoom",
-            maxPlayers: 8
-        );
-    }
-
-    public void JoinGameRoom(string address)
-    {
-        // 加入指定房间
-        MirrorRoomManager.Instance.JoinRoom(address);
-    }
-
-    public void LeaveGameRoom()
-    {
-        // 离开房间
-        MirrorRoomManager.Instance.LeaveRoom();
-    }
-}
-```
-
-### 3. 同步游戏对象
-
-```csharp
-using Mirror;
-using UnityEngine;
-
-public class NetworkPlayer : NetworkBehaviour
-{
-    [SyncVar(hook = nameof(OnPositionChanged))] private Vector3 _networkPosition;
-    [SyncVar(hook = nameof(OnRotationChanged))] private Quaternion _networkRotation;
-    
-    private MirrorLatencyManager _latencyManager;
-    private Vector3 _velocity;
-
-    private void Start()
-    {
-        _latencyManager = MirrorLatencyManager.Instance;
-
-        // 注册同步对象
-        if (netIdentity != null)
-        {
-            MirrorStateSyncManager.Instance.RegisterSyncObject(netIdentity);
-        }
-    }
-
-    private void Update()
-    {
-        if (isLocalPlayer)
-        {
-            // 本地玩家控制逻辑
-            _velocity = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical")) * 5f;
-            transform.position += _velocity * Time.deltaTime;
-            
-            // 更新同步变量
-            _networkPosition = transform.position;
-            _networkRotation = transform.rotation;
-        }
-        else
-        {
-            // 平滑插值
-            transform.position = Vector3.Lerp(transform.position, _networkPosition, Time.deltaTime * 10f);
-            transform.rotation = Quaternion.Slerp(transform.rotation, _networkRotation, Time.deltaTime * 10f);
-        }
-    }
-
-    private void OnPositionChanged(Vector3 oldValue, Vector3 newValue)
-    {
-        // 位置变化回调
-        _networkPosition = newValue;
-    }
-
-    private void OnRotationChanged(Quaternion oldValue, Quaternion newValue)
-    {
-        // 旋转变化回调
-        _networkRotation = newValue;
-    }
-
-    public override void OnStopClient()
-    {
-        base.OnStopClient();
-        // 注销同步对象
-        if (netIdentity != null)
-        {
-            MirrorStateSyncManager.Instance.UnregisterSyncObject(netIdentity);
-        }
-    }
-}
-```
-
-### 4. 发送和接收事件
-
-```csharp
-using Mirror;
-using UnityEngine;
-using Network.Core;
-
-public class GameEventManager : NetworkBehaviour
-{
-    private const short EVENT_SKILL_CAST = 1;
-    private const short EVENT_PLAYER_DAMAGED = 2;
-
-    private void Start()
-    {
-        // 注册事件处理器
-        MirrorEventSyncManager.Instance.RegisterEventHandler(EVENT_SKILL_CAST, OnSkillCastEvent);
-        MirrorEventSyncManager.Instance.RegisterEventHandler(EVENT_PLAYER_DAMAGED, OnPlayerDamagedEvent);
-    }
-
-    [Command]
-    public void CmdCastSkill(string skillId, Vector3 targetPosition)
-    {
-        // 发送技能释放事件
-        object[] data = new object[] { skillId, targetPosition };
-        MirrorEventSyncManager.Instance.SendEvent(EVENT_SKILL_CAST, data);
-    }
-
-    [Command]
-    public void CmdDamagePlayer(int playerId, int damage)
-    {
-        // 发送玩家受伤事件
-        object[] data = new object[] { playerId, damage };
-        MirrorEventSyncManager.Instance.SendEvent(EVENT_PLAYER_DAMAGED, data);
-    }
-
-    private void OnSkillCastEvent(NetworkConnection conn, object[] data)
-    {
-        string skillId = (string)data[0];
-        Vector3 targetPosition = (Vector3)data[1];
-
-        Debug.Log($"玩家释放技能: {skillId}, 目标位置: {targetPosition}");
-
-        // 处理技能释放逻辑
-    }
-
-    private void OnPlayerDamagedEvent(NetworkConnection conn, object[] data)
-    {
-        int playerId = (int)data[0];
-        int damage = (int)data[1];
-
-        Debug.Log($"玩家 {playerId} 受到 {damage} 点伤害");
-
-        // 处理玩家受伤逻辑
-    }
-}
-```
-
-## 性能优化策略
-
-### 1. 优化同步频率
-
-```csharp
-using Mirror;
-using UnityEngine;
-
-public class OptimizedNetworkPlayer : NetworkBehaviour
-{
-    [SyncVar(hook = nameof(OnPositionChanged))] private Vector3 _networkPosition;
-    [SyncVar(hook = nameof(OnRotationChanged))] private Quaternion _networkRotation;
-    
-    private Vector3 _lastPosition;
-    private Quaternion _lastRotation;
-    private float _syncThreshold = 0.01f;
-
-    private void Update()
-    {
-        if (isLocalPlayer)
-        {
-            // 只在状态变化超过阈值时更新同步变量
-            if (Vector3.Distance(transform.position, _lastPosition) > _syncThreshold ||
-                Quaternion.Angle(transform.rotation, _lastRotation) > _syncThreshold)
-            {
-                _networkPosition = transform.position;
-                _networkRotation = transform.rotation;
-
-                _lastPosition = transform.position;
-                _lastRotation = transform.rotation;
-            }
-        }
-        else
-        {
-            // 平滑插值
-            transform.position = Vector3.Lerp(transform.position, _networkPosition, Time.deltaTime * 10f);
-            transform.rotation = Quaternion.Slerp(transform.rotation, _networkRotation, Time.deltaTime * 10f);
-        }
-    }
-
-    private void OnPositionChanged(Vector3 oldValue, Vector3 newValue)
-    {
-        _networkPosition = newValue;
-    }
-
-    private void OnRotationChanged(Quaternion oldValue, Quaternion newValue)
-    {
-        _networkRotation = newValue;
-    }
-}
-```
-
-### 2. 数据压缩
-
-```csharp
-using Mirror;
-using System;
-
-public class CompressedNetworkData
-{
-    public static byte[] CompressVector3(Vector3 vector)
-    {
-        // 使用16位整数压缩Vector3
-        short x = (short)(vector.x * 100);
-        short y = (short)(vector.y * 100);
-        short z = (short)(vector.z * 100);
-
-        byte[] data = new byte[6];
-        Buffer.BlockCopy(BitConverter.GetBytes(x), 0, data, 0, 2);
-        Buffer.BlockCopy(BitConverter.GetBytes(y), 0, data, 2, 2);
-        Buffer.BlockCopy(BitConverter.GetBytes(z), 0, data, 4, 2);
-
-        return data;
-    }
-
-    public static Vector3 DecompressVector3(byte[] data)
-    {
-        short x = BitConverter.ToInt16(data, 0);
-        short y = BitConverter.ToInt16(data, 2);
-        short z = BitConverter.ToInt16(data, 4);
-
-        return new Vector3(x / 100f, y / 100f, z / 100f);
-    }
-}
-
-// 自定义消息示例
-public class CompressedPositionMessage : MessageBase
-{
-    public byte[] compressedPosition;
-    public int playerId;
-}
-```
-
-### 3. 批量事件处理
-
-```csharp
-using Mirror;
-using UnityEngine;
-using System.Collections.Generic;
-
-public class BatchEventProcessor : MonoBehaviour
-{
-    private readonly Queue<object[]> _eventQueue = new Queue<object[]>();
-    private const int MaxBatchSize = 10;
-    private float _batchInterval = 0.1f;
-    private float _lastBatchTime = 0f;
-    private const short EVENT_BATCH = 100;
-
-    public void QueueEvent(object[] eventData)
-    {
-        _eventQueue.Enqueue(eventData);
-
-        if (_eventQueue.Count >= MaxBatchSize ||
-            Time.time - _lastBatchTime >= _batchInterval)
-        {
-            ProcessBatch();
-        }
-    }
-
-    private void ProcessBatch()
-    {
-        if (_eventQueue.Count == 0) return;
-
-        object[] batch = _eventQueue.ToArray();
-        _eventQueue.Clear();
-
-        // 发送批量事件
-        MirrorEventSyncManager.Instance.SendEvent(EVENT_BATCH, batch);
-
-        _lastBatchTime = Time.time;
-    }
-}
-```
-
-### 4. 自适应同步频率
-
-```csharp
-using UnityEngine;
-using Network.Core;
-
-public class AdaptiveSyncManager : MonoBehaviour
-{
-    private float _currentSyncInterval = 0.05f;
-    private float _minSyncInterval = 0.02f;
-    private float _maxSyncInterval = 0.1f;
-    private float _latencyThreshold = 100f; // 100ms
-
-    private void Update()
-    {
-        UpdateSyncInterval();
-    }
-
-    public void UpdateSyncInterval()
-    {
-        float latency = MirrorLatencyManager.Instance.AverageLatency;
-
-        if (latency > _latencyThreshold)
-        {
-            // 延迟高，降低同步频率
-            _currentSyncInterval = Mathf.Min(_currentSyncInterval * 1.1f, _maxSyncInterval);
-        }
-        else
-        {
-            // 延迟低，提高同步频率
-            _currentSyncInterval = Mathf.Max(_currentSyncInterval * 0.9f, _minSyncInterval);
-        }
-
-        MirrorStateSyncManager.Instance.SetSyncInterval(_currentSyncInterval);
-    }
-}
-```
-
-## 与Unity引擎的结合点
-
-### 1. NetworkIdentity组件集成
-
-```csharp
-[RequireComponent(typeof(NetworkIdentity))]
-public class NetworkSyncObject : NetworkBehaviour
-{
-    private NetworkIdentity _networkIdentity;
-
-    private void Awake()
-    {
-        _networkIdentity = GetComponent<NetworkIdentity>();
-    }
-
-    [SyncVar(hook = nameof(OnHealthChanged))] private float _health;
-
-    private void OnHealthChanged(float oldValue, float newValue)
-    {
-        // 处理生命值变化
-    }
-
-    [Command]
-    public void CmdTakeDamage(float damage)
-    {
-        _health -= damage;
-        if (_health <= 0)
-        {
-            // 处理死亡逻辑
-        }
-    }
-}
-```
-
-### 2. RPC调用
-
-```csharp
-public class NetworkRPCExample : NetworkBehaviour
-{
-    [ClientRpc]
-    public void RpcPlaySound(string soundId)
-    {
-        // 在所有客户端播放音效
-        AudioManager.Instance.PlaySound(soundId);
-    }
-
-    [ServerRpc]
-    public void ServerRpcRequestRespawn()
-    {
-        // 服务器处理重生请求
-        // ...
-        RpcRespawn();
-    }
-
-    [ClientRpc]
-    public void RpcRespawn()
-    {
-        // 在客户端执行重生逻辑
-    }
-
-    public void TriggerSound()
-    {
-        // 调用RPC
-        RpcPlaySound("Explosion");
-    }
-}
-```
-
-### 3. 场景同步
-
-```csharp
-using Mirror;
-using UnityEngine.SceneManagement;
-
-public class NetworkSceneManager : NetworkBehaviour
-{
-    [Server]
-    public void LoadScene(string sceneName)
-    {
-        NetworkManager.singleton.ServerChangeScene(sceneName);
-    }
-
-    public override void OnSceneChanged(Scene scene, Scene previousScene)
-    {
-        Debug.Log($"场景加载完成: {scene.name}");
-    }
-}
-```
-
-## 局域网联机实现
-
-### 1. 局域网发现服务
-
-```csharp
-using Mirror;
-using UnityEngine;
-using System.Collections.Generic;
-
-public class LANDiscovery : NetworkDiscoveryBase
-{
-    [Header("UI")]
-    public UnityEngine.UI.Text statusText;
-    public UnityEngine.UI.Button startServerButton;
-    public UnityEngine.UI.Button joinButton;
-    public UnityEngine.UI.Dropdown serverDropdown;
-
-    private List<ServerResponse> discoveredServers = new List<ServerResponse>();
-
-    public override void OnServerFound(ServerResponse info)
-    {
-        // 发现新服务器
-        discoveredServers.Add(info);
-        UpdateServerList();
-    }
-
-    public void StartHost()
-    {
-        // 启动主机模式
-        NetworkManager.singleton.StartHost();
-        StartDiscovery();
-        statusText.text = "主机已启动，等待连接...";
-    }
-
-    public void JoinServer()
-    {
-        // 加入选中的服务器
-        if (serverDropdown.value < discoveredServers.Count)
-        {
-            ServerResponse server = discoveredServers[serverDropdown.value];
-            NetworkManager.singleton.networkAddress = server.serverAddress;
-            NetworkManager.singleton.StartClient();
-            statusText.text = $"正在连接到 {server.serverAddress}...";
-        }
-    }
-
-    public void StartDiscovery()
-    {
-        // 开始局域网发现
-        StartDiscoveryAsync();
-        statusText.text = "正在搜索局域网服务器...";
-    }
-
-    private void UpdateServerList()
-    {
-        // 更新服务器列表
-        serverDropdown.ClearOptions();
-        foreach (var server in discoveredServers)
-        {
-            serverDropdown.options.Add(new UnityEngine.UI.Dropdown.OptionData($"{server.serverAddress}:{server.serverPort}"));
-        }
-        joinButton.interactable = discoveredServers.Count > 0;
-    }
-}
-```
-
-### 2. 本地服务器自动发现
-
-```csharp
-using Mirror;
-using UnityEngine;
-using System.Net;
-using System.Net.Sockets;
-
-public class LocalServerDiscovery : MonoBehaviour
-{
-    public static string GetLocalIPAddress()
-    {
-        var host = Dns.GetHostEntry(Dns.GetHostName());
-        foreach (var ip in host.AddressList)
-        {
-            if (ip.AddressFamily == AddressFamily.InterNetwork)
-            {
-                return ip.ToString();
-            }
-        }
-        return "127.0.0.1";
-    }
-
-    public void StartLocalServer()
-    {
-        string localIP = GetLocalIPAddress();
-        MirrorNetworkManager.Instance.networkAddress = localIP;
-        MirrorNetworkManager.Instance.StartServer();
-        Debug.Log($"本地服务器已启动，IP: {localIP}");
-    }
-
-    public void AutoJoinLocalServer()
-    {
-        string localIP = GetLocalIPAddress();
-        MirrorNetworkManager.Instance.StartClient(localIP);
-        Debug.Log($"正在连接到本地服务器: {localIP}");
-    }
-}
-```
-
-## 联网服务接口预留
-
-### 1. 远程服务器连接接口
-
-```csharp
-using Mirror;
-using UnityEngine;
-
-public class RemoteServerManager : MonoBehaviour
-{
-    [SerializeField] private string remoteServerAddress = "your-remote-server.com";
-    [SerializeField] private int remoteServerPort = 7777;
-
-    public void ConnectToRemoteServer()
-    {
-        // 连接到远程服务器
-        MirrorNetworkManager.Instance.networkAddress = remoteServerAddress;
-        MirrorNetworkManager.Instance.port = remoteServerPort;
-        MirrorNetworkManager.Instance.StartClient();
-        Debug.Log($"正在连接到远程服务器: {remoteServerAddress}:{remoteServerPort}");
-    }
-
-    public void ConnectToLocalServer()
-    {
-        // 切换回本地服务器
-        MirrorNetworkManager.Instance.networkAddress = "localhost";
-        MirrorNetworkManager.Instance.port = 7777;
-        MirrorNetworkManager.Instance.StartClient();
-        Debug.Log("正在连接到本地服务器");
-    }
-}
-```
-
-### 2. 网络传输层抽象
-
-```csharp
-using Mirror;
-using UnityEngine;
-
-public class NetworkTransportManager : MonoBehaviour
-{
-    public enum TransportType
-    {
-        Telepathy, // 默认传输
-        KCP,       // 可靠UDP
-        SteamP2P   // Steam P2P
-    }
-
-    public void SetTransport(TransportType transportType)
-    {
-        // 根据类型设置不同的传输层
-        switch (transportType)
-        {
-            case TransportType.Telepathy:
-                NetworkManager.singleton.transport = GetComponent<TelepathyTransport>();
-                break;
-            case TransportType.KCP:
-                NetworkManager.singleton.transport = GetComponent<KcpTransport>();
-                break;
-            case TransportType.SteamP2P:
-                NetworkManager.singleton.transport = GetComponent<SteamP2PTransport>();
-                break;
-        }
-        Debug.Log($"网络传输层已设置为: {transportType}");
-    }
-}
-```
-
-## 总结
-
-网络同步服务通过基于Mirror 96.10.0框架的混合同步策略，实现了高效、稳定的多端数据同步机制，具有以下优势：
-
-1. **混合同步策略**：结合状态同步与事件同步的优势，优化网络传输效率
-2. **延迟补偿**：实现延迟补偿机制，减少网络延迟对游戏体验的影响
-3. **冲突解决**：实现冲突解决机制，确保多端状态的一致性
-4. **性能优化**：通过数据压缩、同步频率优化等手段，提高网络性能
-5. **易于扩展**：支持自定义同步策略和网络事件处理
-6. **局域网优先**：优先支持局域网联机，同时预留了联网服务接口
-
-通过使用网络同步服务，项目可以实现高效的多人在线游戏功能，提升游戏体验和可玩性。
-
-## 参考文档
-
-- [Mirror Networking官方文档](https://mirror-networking.gitbook.io/docs/)
-- [Mirror Networking GitHub仓库](https://github.com/MirrorNetworking/Mirror)
-- [Unity Mirror Networking教程](https://docs.unity.com/ugs/en-us/manual/relay/manual/mirror)
-- [Mirror Networking最佳实践](https://unitystation.github.io/unitystation/development/SyncVar-Best-Practices-for-Easy-Networking/)
+### 4.2 权威的单一来源
+
+| 类别 | 推荐做法 |
+|------|----------|
+| 可推导状态（生命、是否在技能中、局内阶段） | **服务端计算 + SyncVar/同步结构** 下发 |
+| 玩家意图（移动、施法、购买） | 客户端 **Command**/**消息**上报，服务端校验后执行 |
+| 纯表演（音效、弹道特效） | 客户端本地或经由 **Rpc/ClientRpc** 触发 |
+
+---
+
+## 5. 核心同步构件（不写实现代码）
+
+### 5.1 NetworkIdentity 与 NetworkBehaviour
+
+每个需网络存在的场景对象挂载 **NetworkIdentity**；其上 **NetworkBehaviour** 子脚本承担同步逻辑。
+
+- **生命周期语义**（与模板注释一致）：`OnStartServer` / `OnStartClient` / `OnStartLocalPlayer` 等；
+- **`OnStartLocalPlayer`**：仅本地玩家初始化输入、相机监听等；
+- **`hasAuthority`**：与对象归属结合使用（见 Mirror 文档），避免误判「谁在改状态」。
+
+### 5.2 状态同步：SyncVar 与钩子
+
+原则：**少而稳**——仅同步答辩与玩法必需字段；大变体用 `[SyncVar(hook)]` 或拆分为多个 SyncVar。
+
+| 准则 | 说明 |
+|------|------|
+| 粒度 | 优先按「逻辑属性」拆 SyncVar，避免单巨型结构体频繁整包变化 |
+| Hook | 表现层（UI/特效）放在 hook 或客户端侧只读分支，避免在 hook 内再改权威数据 |
+| 初始化 | 依赖 `OnStartClient` 时 SyncVar 已就绪的语义（见模板说明） |
+
+### 5.3 玩家意图：Command / RPC
+
+| 方向 | 机制 | 适用 |
+|------|------|------|
+| 客户端→服务端 | `[Command]`（或对应 API） | 移动、施法请求、交互 |
+| 服务端→客户端 | `ClientRpc` / `TargetRpc` | 结算广播、仅本人提示 |
+
+**校验清单（答辩可讲）**：频率限制、参数范围、当前游戏阶段是否允许、服务端是否拥有目标实体。
+
+### 5.4 生成与销毁（Spawn）
+
+- 玩家对象：由 **NetworkManager** 的 `playerPrefab` 与 `OnServerAddPlayer` 等管线配置（见 Network Manager 模板）；
+- 动态实体：仅在服务端 `NetworkServer.Spawn`，客户端禁止「本地 Instantiate 当网络实体」长期存在。
+
+### 5.5 兴趣管理（可选）
+
+若同场景实体数量大，再考虑 **Custom Interest Management** 模板；毕业设计 LAN 规模通常可延后。
+
+---
+
+## 6. 会话、场景与房间
+
+### 6.1 NetworkManager 角色
+
+负责 **启动/停止** Host、Server、Client，及 **场景在线切换**（`ServerChangeScene` 等）。实现时建议直接继承模板 `NetworkManager` 或 `NetworkManager With Actions`，在子类中**仅覆写需要的虚方法**，避免复制整份空实现造成维护负担。
+
+### 6.2 关键回调（逻辑职责，非代码）
+
+| 场景 | 典型钩子（名称以 Mirror 为准） | 设计说明 |
+|------|----------------------------------|----------|
+| 主机/服务启动 | `OnStartHost` / `OnStartServer` | 初始化局内单例、注册自定义消息（若需要） |
+| 客户端启动 | `OnStartClient` | UI 状态、输入策略 |
+| 连接/断开 | `OnServerConnect` / `OnServerDisconnect`、`OnClientConnect` / `OnClientDisconnect` | 日志、重连提示、清理临时数据 |
+| 场景切换 | `ServerChangeScene` / `OnServerSceneChanged` / `OnClientSceneChanged` | **同一套关卡流程在服务端驱动** |
+
+### 6.3 场景同步策略
+
+- **Online/Offline 场景**：可在 NetworkManager 上配置 `offlineScene` / `onlineScene`（以项目配置为准）；
+- **切局时**：注意 Mirror 对 **Client Ready** 的默认行为；答辩需说清「何时再次 Ready、何时生成玩家」。
+
+### 6.4 NetworkRoomManager（可选）
+
+若毕业设计需要 **大厅 → 全员 Ready → 开局** 的完整演示链，优先采用 **NetworkRoomManager + NetworkRoomPlayer** 模板，避免自建房间状态机与 Mirror 场景流冲突。
+
+| 能力 | 说明 |
+|------|------|
+| 槽位与人数上限 | 模板内建房间玩家槽位 |
+| Ready 聚合 | `OnRoomServerPlayersReady` 前可插入倒计时等 |
+| 房间→局内 | `OnRoomServerCreateGamePlayer` 等定制生成逻辑 |
+
+若项目极简（仅「开始游戏即进局」），可暂不用 Room，改由单一 NetworkManager 承担。
+
+### 6.5 认证（Authenticator）
+
+- **LAN 演示**：可使用模板默认的「空认证」或极简握手；
+- **外网预留**：在 `NetworkAuthenticator` 子类中扩展 **AuthRequestMessage/AuthResponseMessage** 负载（字段由论文需求定义），本说明书不固定报文格式。
+
+---
+
+## 7. 「网络同步服务」逻辑模块划分
+
+> 以下名称表示**逻辑职责**，与旧版文档中「XX管理器」类名不必一一对应；实现时多数能力应落在 **NetworkBehaviour + NetworkManager 子类** 中，避免再维护一套与 Mirror 平行的「第二网络层」。
+
+| 逻辑模块 | 职责 | Mirror 落点 |
+|----------|------|-------------|
+| 连接与会话 | Host/Client 启停、断线处理 | `NetworkManager` 子类、`OnClientDisconnect` 等 |
+| 房间与匹配（可选） | 房间槽、Ready、切局 | `NetworkRoomManager` / `NetworkRoomPlayer` |
+| 实体状态同步 | 位置、血量、局内枚举 | **带 SyncVar / Transform 组件**的 `NetworkBehaviour` |
+| 事件与通知 | 技能结算、播报 | `ClientRpc`、`TargetRpc`、或 `NetworkMessage`（按需） |
+| 延迟与体验（轻量） | 插值、输入缓冲简述 | **客户端预测/插值**限制在局部脚本，不上升到全局第二条网络栈 |
+
+**删除旧文档中独立「延迟处理器」「冲突解决器」作为必备类的假设**——毕业设计应将**冲突消除在服务端裁决**，客户端仅呈现；复杂回滚可作为**展望**单列一节即可。
+
+---
+
+## 8. 局域网（LAN）与发现
+
+### 8.1 目标
+
+同一路由器网段内，**主机创建房间**，**客机发现并加入**（或通过 IP 直连）。
+
+### 8.2 对齐实现
+
+优先使用 **`NetworkDiscovery` 脚本模板**，将「广播端口、键值、会话信息」写入设计参数表（论文中可单列配置节）。
+
+### 8.3 限制说明
+
+- 发现服务与 **防火墙**、**多网卡** 相关的问题，在论文「测试环境」中说明测试机设置；
+- **NAT 打洞、公网直连** 不作为本篇必达项。
+
+---
+
+## 9. 外网与传输层（预留）
+
+| 项目 | 说明 |
+|------|------|
+| 远程主机 | 固定 IP 或域名 + 端口的手动输入即可作为**最小外网 demo** |
+| 传输抽象 | Mirror 已抽象 Transport；换 KCP/Telepathy 属**配置/部署**变更，本设计不展开 |
+| 数据安全 | 毕设阶段可为**信任模型**；若论文需要，可描述 TLS/专用协议为**未来工作** |
+
+---
+
+## 10. 性能与可扩展性（轻量化指标）
+
+| 类别 | 建议 |
+|------|------|
+| 同步频率 | Transform/状态按组件默认与项目需要调节；避免每帧全量广播大结构 |
+| 事件合并 | 同一逻辑帧多事件可合并为单 Rpc 或单消息（按需） |
+| 可观测性 | 关键路径 `Debug.Log` 可开关；答辩演示用统一日志前缀 |
+
+---
+
+## 11. 测试与验收（适合毕设答辩）
+
+| 类型 | 用例示例 |
+|------|----------|
+| 功能 | LAN 两台机 Host+Client，进同局；断线一端，另一端行为符合预期（不崩溃） |
+| 同步 | 服务端改血量，客机 UI/表现一致 |
+| 安全基线 | 客户端修改本地缓存数值不能持久影响服务端裁决（任选一种玩法现场试） |
+
+---
+
+## 12. 风险与缓解
+
+| 风险 | 缓解 |
+|------|------|
+| 业务层与 Mirror 双轨并行 | **禁止**长期维护两套网络栈；新业务只走 Mirror 钩子 |
+| 场景流与自建房间冲突 | 若用 Room，则房间状态跟 **NetworkRoomManager** |
+| 过度设计预测回滚 | 毕设先做权威+插值，预测留论文「展望」 |
+| ScriptTemplates 与引擎版本漂移 | Mirror 升级后复查模板文件名与钩子签名 |
+
+---
+
+## 13. 实施路线（建议）
+
+| 阶段 | 范围 | 交付 |
+|------|------|------|
+| MVP | `NetworkManager` + 玩家 `NetworkBehaviour` + SyncVar + 基础 Command | LAN 可玩最小局 |
+| P1 | `NetworkDiscovery` 或固定 IP 入房；断线提示 | 演示流程完整 |
+| P2 | 可选 `NetworkRoomManager`；Authenticator 扩展草稿 | 大厅 Ready 与「像产品」一点的体验 |
+
+---
+
+## 14. 参考
+
+- Mirror 官方文档与 API（见各 ScriptTemplates 文件头注释中的链接）。
+- 项目内脚本模板目录：`Assets/ThirdParty/Mirror/ScriptTemplates`。
+- 项目内其它设计文档（若存在）：局内规则、技能与 Buff 权威说明需与本篇 **「服务端权威」** 一致。
+
+---
+
+## 附录 A：与旧版 v1.x 文档的关系
+
+旧版（v1.x）以**大段示例代码**堆叠「连接管理器、房间管理器、状态同步器」等，易与 Mirror 自带职责重复，且 API 版本（如 `NetworkConnection` 与 `NetworkConnectionToClient`）可能随 Mirror 升级而变化。
+
+**v2.0** 将上述内容抽象为：
+
+- **职责表**（本章 §7）；
+- **与 ScriptTemplates 的映射**（§3）；
+- **Mirror 原生生命周期**（§5、§6）。
+
+实现代码应在 Unity 工程内由 ScriptTemplates 生成后再行填充，**本说明书不替代 API 文档**。

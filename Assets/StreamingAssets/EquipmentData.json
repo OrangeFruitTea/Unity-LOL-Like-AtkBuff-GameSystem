@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "items": [
+    {
+      "itemConfigId": 2001,
+      "displayName": "示例长剑",
+      "slotType": "Major",
+      "maxStack": 1,
+      "uniqueItem": false,
+      "uniqueGroupId": "",
+      "basePrice": 350,
+      "purchasable": true,
+      "sellable": true,
+      "sellRefundRatio": 0.5,
+      "equippedBuffs": [
+        {
+          "bindingId": "main",
+          "buffId": 5001,
+          "buffLevel": 1,
+          "levelScalingPerItemTier": 0,
+          "durationOverride": null,
+          "customArgs": []
+        },
+        {
+          "bindingId": "passive_onhit",
+          "buffId": 5002,
+          "buffLevel": 1,
+          "customArgs": []
+        }
+      ],
+      "activeSkillId": null,
+      "metadata": null
+    },
+    {
+      "itemConfigId": 2002,
+      "displayName": "示例巨剑",
+      "slotType": "Major",
+      "maxStack": 1,
+      "uniqueItem": false,
+      "uniqueGroupId": "",
+      "basePrice": 1200,
+      "purchasable": true,
+      "sellable": true,
+      "sellRefundRatio": 0.5,
+      "equippedBuffs": [
+        {
+          "bindingId": "big_main",
+          "buffId": 5100,
+          "buffLevel": 1,
+          "customArgs": []
+        }
+      ],
+      "activeSkillId": null,
+      "metadata": null
+    }
+  ],
+  "shopEntries": [
+    {
+      "entryId": 1,
+      "itemConfigId": 2001,
+      "category": "Attack",
+      "sortOrder": 10
+    },
+    {
+      "entryId": 2,
+      "itemConfigId": 2002,
+      "category": "Attack",
+      "sortOrder": 20
+    }
+  ],
+  "craftRecipes": [
+    {
+      "recipeId": 9001,
+      "resultItemConfigId": 2002,
+      "goldCost": 200,
+      "materials": [
+        {
+          "itemConfigId": 2001,
+          "count": 2
+        }
+      ],
+      "enabled": true
+    }
+  ]
+}
