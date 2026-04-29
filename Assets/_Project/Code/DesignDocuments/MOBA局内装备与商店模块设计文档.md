@@ -5,7 +5,7 @@
 | 文档版本 | 1.3 |
 | 适用引擎 | Unity 2022 |
 | 文档类型 | 模块设计（Module Design） |
-| 关联系统 | 角色属性（如 `EntityDataComponent`）、**Buff（效果真理源）**、**技能系统（同类 JSON + 施加路径）**、ECS 实体桥接；经济系统**不在本文档范围** |
+| 关联系统 | 角色属性（如 `EntityDataComponent`）、**Buff（效果真理源）**、**技能系统（同类 JSON + 施加路径）**、ECS 实体桥接；**局内金币来源与击杀赏金**见《**MOBA局内经济系统设计文档**》 |
 | 核心决策 | **装备在底层逻辑上 = 挂载若干 Buff 的物品**；表驱动效果以 **JSON** 配置为主，便于快速调试与迭代 |
 
 ---
@@ -37,7 +37,7 @@
 | 装备栏（Loadout Slot） | 固定数量的槽位，用于挂载装备实例；槽位规则由产品设计（如 6 大件 + 鞋）。 |
 | 唯一被动（Unique Passive） | 同类效果在规则上互斥，通常按「被动组 id」或「配置 flag」实现互斥与替换。 |
 | 装备 Buff 绑定（Equipment Buff Binding） | 一条配置：**在装备存在于有效栏位时**对持有者施加的 Buff 描述（`buffId`、等级、可选持续时间覆盖、自定义参数）；卸下时**成对移除**。 |
-| 经济（Economy） | 金币获得、成长曲线、团队差等；**本文档仅保留「扣费接口」假设，不设计经济子系统**。 |
+| 经济（Economy） | 金币获得、成长曲线、团队差等；**收入侧与击杀赏金**见《**MOBA局内经济系统设计文档**》；本文仅保留 **扣费/退款** 与 `ICurrencyWallet` 假设。 |
 
 ---
 
@@ -54,7 +54,7 @@
 
 ### 2.2 范围外（Out of Scope）
 
-- 兵线/野怪/工资等**金币来源**与**经济曲线**；
+- 兵线/野怪/工资等**金币来源**与**经济曲线**（收入侧设计见《**MOBA局内经济系统设计文档**》）；
 - 地图机制（多商店、野店、信使运送）的完整玩法设计；
 - 完整商业化、反作弊、风控；
 - UI 视觉规范与动效细则（仅保留「必要交互与信息架构」级要求）。
@@ -479,7 +479,7 @@ Gameplay 收口 API：
 
 ## 12. 文档维护
 
-- 配置表字段变更需同步更新本文档 **§6** 与错误码表；
+- **局内金币收入、击杀赏金与 `ICurrencyWallet` 多分钱包演进**见《**MOBA局内经济系统设计文档**》；扣费语义仍以本文 **`PurchaseService`** 为准；
 - 与《角色属性系统设计文档》《基于Buff与ECS的技能系统设计文档》冲突时，以**属性与 Buff 真理源**文档为准修订装备效果章节；
 - **装备 `equippedBuffs` 与技能 `BuffApplicationStep` 共用 `buffId` 与施加语义时**，两文档应交叉引用，避免 `BuffTypeRegistry` 登记策略分裂。
 
@@ -487,7 +487,7 @@ Gameplay 收口 API：
 
 ## 13. 参考资料（项目内）
 
-- 《基于Buff与ECS的技能系统设计文档》：**`BuffApplyService`、`buffId`、表驱动施加**；
+- 《**MOBA局内经济系统设计文档**》：局内收入来源、ECS 赏金绑定、击杀结算与 **`ICurrencyWallet`** 收口；
 - 角色属性与 ECS：`EntityDataComponent` 及相关枚举；
 - 效果落地：**`BuffManager` / `BuffBase`**；Impact 系统（若采用）另文约定；
 - 配置管线：**Basement Json**（`JsonSerializerProfile.GameContent`、`DeserializeFromFilePath`、`JsonReadResult`）、`StreamingAssets`；
