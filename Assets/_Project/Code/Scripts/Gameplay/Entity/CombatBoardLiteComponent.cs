@@ -9,10 +9,13 @@ namespace Core.Entity
     /// </summary>
     public struct CombatBoardLiteComponent : IEcsComponent
     {
-        /// <summary> 当前普攻或技能主攻/瞄准对象（与射线、Strike 对齐）。 </summary>
+        /// <summary>
+        /// 当前普攻或技能 **单体** 主攻/瞄准对象（与射线、Strike 对齐）。<br/>
+        /// NPC/塔/野怪索敌后写入；玩家从范围/选中确定目标后也应写入，供与 <c>SkillCastContext.PrimaryTarget</c> 对齐。多目标/AoE 落点另用施法上下文。
+        /// </summary>
         public long AttackTargetEntityId;
 
-        /// <summary> 仇恨首要对象（简易单槽；可与 <see cref="AttackTargetEntityId"/> 相同，或嘲讽等规则下分离）。 </summary>
+        /// <summary> 仇恨首要对象（简易单槽；可与 <see cref="AttackTargetEntityId"/> 相同，或嘲讽、塔仇恨等规则下分离）。 </summary>
         public long ThreatTargetEntityId;
 
         /// <summary> 最近一次对自身造成伤害的进攻方实体。 </summary>
