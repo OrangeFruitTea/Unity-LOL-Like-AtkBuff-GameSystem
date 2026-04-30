@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Core.Entity;
+using Core.Combat;
+using Core.Entity.Jungle;
+using Core.Entity.Minions;
 using UnityEngine;
 using Basement.Runtime;
 using Basement.Utils;
@@ -88,8 +91,12 @@ namespace Core.ECS
         private void Initialize()
         {
             EcsManager = new EcsEntityManager();
-            // 初始化其他ECS系统
             AddEcsSystem(new EntitySpawnSystem());
+            AddEcsSystem(new TowerCombatCycleSystem());
+            AddEcsSystem(new ImpactSystem());
+            AddEcsSystem(new UnitVitalitySystem());
+            AddEcsSystem(new JungleAiSystem());
+            AddEcsSystem(new LaneMinionMoveSystem());
         }
 
         protected void Update()
@@ -136,6 +143,16 @@ namespace Core.ECS
         {
             return Instance.EcsManager.Exists(entity);
         }
+
+        public EcsEntity CreateEntity() => EcsManager.CreateEntity();
+
+        public void DestroyEntity(EcsEntity entity) => EcsManager.DestroyEntity(entity);
+
+        public IEnumerable<EcsEntity> GetEntitiesWithComponent<T>() where T : struct, IEcsComponent
+            => EcsManager.GetEntitiesWithComponent<T>();
+
+        public IEnumerable<EcsEntity> GetEntitiesWithAllComponents(params Type[] componentTypes)
+            => EcsManager.GetEntitiesWithAll(componentTypes);
         #endregion
     }
 }

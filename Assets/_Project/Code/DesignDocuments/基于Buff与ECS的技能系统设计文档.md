@@ -23,9 +23,9 @@
 | `BuffBase` / `BuffConfig` / `BuffRuntimeData` | 单个 Buff 的生命周期与数值；技能只负责**在正确时间、对正确目标、带正确参数**调用施加。 |
 | `BuffConflictResolution` | 多段技能重复施加同一 Buff 时，行为与普攻/环境 Buff 一致，无需技能层重复实现。 |
 | `BuffDataLoader` + JSON | Buff **静态定义**来源；技能配置中引用 `BuffConfig.id`（或等价标识），由注册表解析为具体 `BuffBase` 类型或工厂。 |
-| `BuffEffect`（含 `TriggerAnotherBuff`） | 表明 Buff 自身也可触发其它逻辑；技能系统**不禁止** Buff 内部再挂 Buff，但**策划向的技能效果编排**应优先在技能步骤表中完成，便于可视化与复现。 |
+| `BuffEffectOpcode`（及 `BuffOpcodeInstruction`/`BuffEffectComposition`/配方子类）（含链子 Buff 语义） | 表明 Buff 可由 **多条 opcode 指令**组合；Dispatcher 将实现具体行为；技能系统仍**不禁止** Buff 配方内再挂 Buff，策划向编排仍以技能步骤 + opcode 表为主。 |
 
-**说明**：当前 `AddBuff<T>` 为泛型入口，技能表驱动需要一层 **Buff 注册表**（`id → 工厂/Type`），在实现阶段补充；设计层要求**所有表驱动施加**最终仍走 `BuffManager` 的统一路径，避免绕过冲突与池化。
+**说明**：遗留的扁平 **`BuffEffect` 枚举已移除**，避免与 **`BuffEffectOpcode` + 多重指令** dual-use；旧文档若提及 `BuffEffect` 请以代码为准。
 
 ### 2.2 ECS 子系统（施法者状态与调度载体）
 

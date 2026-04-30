@@ -2,14 +2,32 @@ using System.Collections.Generic;
 using System.Linq;
 using Core.ECS;
 using Core.Entity;
+using UnityEngine;
 
 namespace Core.Combat
 {
     public class ImpactSystem : IEcsSystem
     {
         private HashSet<string> _processedEvents = new HashSet<string>();
-        
-        public void Update(float deltaTime, EcsWorld world)
+
+        public int UpdateOrder => 31;
+
+        public void Initialize()
+        {
+            _processedEvents.Clear();
+        }
+
+        public void Destroy()
+        {
+            _processedEvents.Clear();
+        }
+
+        public void Update()
+        {
+            Update(Time.deltaTime, EcsWorld.Instance);
+        }
+
+        private void Update(float deltaTime, EcsWorld world)
         {
             // 从ECS世界中获取所有具有ImpactEventComponent的实体
             var eventEntities = world.GetEntitiesWithComponent<ImpactEventComponent>();
@@ -241,6 +259,17 @@ namespace Core.Combat
                     ApplyBonusAttributeChange(targetData, EntityBaseData.Resilience, finalValue, impactEvent.OperationType);
                     break;
                 // 护盾和状态相关的处理可以在这里扩展
+            }
+
+            if (impactEvent.TargetAttribute == TargetAttribute.Hp &&
+                impactEvent.OperationType == ImpactOperationType.Subtract &&
+                finalValue > 0f &&
+                impactEvent.Source.IsValid() &&
+                targetEntity.HasComponent<CombatBoardLiteComponent>())
+            {
+                var board = targetEntity.GetComponent<CombatBoardLiteComponent>();
+                board.LastDamageFromEntityId = impactEvent.Source.Id;
+                targetEntity.SetComponent(board);
             }
             
             // 更新目标实体的组件
