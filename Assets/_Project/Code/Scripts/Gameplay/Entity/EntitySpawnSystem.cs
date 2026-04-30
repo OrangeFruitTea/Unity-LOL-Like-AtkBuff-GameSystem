@@ -53,6 +53,34 @@ namespace Core.Entity
             var dataComp = new EntityDataComponent();
             dataComp.InitializeDefaults();
             EcsWorld.AddComponent(ecsEntity, dataComp);
+
+            var profile = sceneEntity.GetComponent<CombatEntitySpawnProfile>();
+            if (profile == null)
+                return;
+
+            if (profile.AddFaction)
+            {
+                var fac = new FactionComponent();
+                fac.InitializeDefaults();
+                fac.TeamId = profile.TeamId;
+                EcsWorld.AddComponent(ecsEntity, fac);
+            }
+
+            if (profile.AddArchetype)
+            {
+                var arch = new UnitArchetypeComponent();
+                arch.InitializeDefaults();
+                arch.Archetype = profile.Archetype;
+                arch.ConfigId = profile.ConfigId;
+                EcsWorld.AddComponent(ecsEntity, arch);
+            }
+
+            if (profile.AddCombatBoardLite)
+            {
+                var board = new CombatBoardLiteComponent();
+                board.InitializeDefaults();
+                EcsWorld.AddComponent(ecsEntity, board);
+            }
         }
 
         private void ProcessDestroyRequests()
