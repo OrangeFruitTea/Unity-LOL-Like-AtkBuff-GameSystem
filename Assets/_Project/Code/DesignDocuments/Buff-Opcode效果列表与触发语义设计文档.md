@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |----|------|
-| 文档版本 | 1.1 |
+| 文档版本 | 1.4 |
 | 关联文档 | 《基于Buff与ECS的技能系统设计文档》、《MOBA局内单位模块ECS设计文档》、Impact 使用指南 |
 | 适用引擎 | Unity 2022 |
 
@@ -85,11 +85,39 @@
 | 触发键 | 建议语义 | 与现有代码的衔接 |
 |--------|----------|------------------|
 | `OnApply` | 施加成功瞬间执行一轮 opcode 列表（可空） | 对应 `BuffBase.OnGet` 末尾调用 **Dispatcher** |
-| `OnPeriodicTick` | 每 `frequency` 秒执行一轮（可配置首跳是否延迟） | `BuffManager` 侧累计时间或 `BuffBase.FixedUpdate` 中计时后调 Dispatcher |
+| `OnPeriodicTick` | 按配置间隔执行 opcode 列表（如 DOT） | **由 §4.4 统一时间轴** 触发后调 Dispatcher；**不**建议与 **`ResidualDuration` 降级节拍**在无约定下混搭成两套独立钟表 |
 | `OnRemove` | 移除时执行（常用于「结束时净化」或还原） | `OnLost` |
 | `OnStackChanged` | 叠层变化时执行（可选，二期） | `OnLevelChange` 或专用钩子 |
 
 **原则**：内层触发类型 **一期控制在 3～4 个**，避免与技能外层重复造轮子。
+
+### 4.3 `BuffRuntimeData.CurrentLevel` 语义（与本项目对齐）
+
+本项目与毕设交付范围内 **不做**「同一字段兼表技能成长 Buff 等级」的第二套含义。
+
+| 约定 | 说明 |
+|------|------|
+| **`CurrentLevel` = 叠层（层数）** | 典型用例：**中毒层数**、可叠加减益层数；技能一次施加「x 层」即 **`TryApply`/`AddBuff` 写入的层级**或由 **`BuffConflictResolution.Combine`** 累加的结果。 |
+| **无单独的「法术等级」字段需求** | 若日后需要「Buff 强度随技能等级变化」，**另增**字段（例如 `ResolvedSkillBuffGrade`）或把这些乘区 **写进 opcode 参数 / `CustomArgs`**，**不复用** `CurrentLevel` 表示层数之外的语义。 |
+
+与现有 `BuffManager` 冲突解决、降级规则交互时：**凡文档与表称「层」**，均指 **`CurrentLevel`**。
+
+### 4.4 DOT / 层衰减：单一时间轴（规避「双钟表」）
+
+**风险**：若在 **同一 Buff** 上同时用 **`BuffConfig.frequency`（或 Dispatcher 自定累加）** 驱动 DOT，又用 **`ResidualDuration` + `demotion`** 驱动「每 z 秒掉一层」，两套计时若分别绑定 **`Update` / `FixedUpdate` / 协程 Wait**，易出现 **漂移、同帧双跳/漏跳、再施加叠层后两套钟表不同步**。
+
+**定稿（推荐实现形态）**：在 **`MetaBuff`（或挂载于该 Buff 的 Opcode 调度部件）内部**维护 **同一根时间基准**下的 **两个累积量**（名称可随代码调整，语义如下）：
+
+| 状态变量（示例名） | 含义 |
+|--------------------|------|
+| `SinceLastDot` | 距上次 **DOT / `OnPeriodicTick`** 已过去的时间（秒） |
+| `SinceLastStackDecay` | 距上次 **叠层衰减**（层数 −1）已过去的时间（秒） |
+
+- **时间基准**：优先 **`Time.time`**；若要与局内权威时间对齐，改用项目已有 **`MatchTimeService` 等对局时钟**（与《对局时间模块设计文档》一致），**全 Buff 语义层统一选一者**，不在同一 Buff 上混用。  
+- **节拍**：表中配置 **`dotIntervalSeconds`**、`**stackDecayIntervalSeconds**`（可映射自原 `frequency` / 毒每层间隔 z）；每帧或每固定推进步：**`elapsed = now - anchor`** 或对 **delta 累加**至阈值后：**执行 Dispatcher → `OnPeriodicTick` opcode**（如 `ImpactDamage`），或对 **`CurrentLevel` 递减**直至为 0 再整体移除 Buff。  
+- **与 `BuffManager.ResidualDuration` / `demotion` 的关系**：实现 ** Opcode 毒害类**时，推荐 **本条路径以 §4.4 为唯一节拍源**，**暂不依赖** Manager 自带的「到期降级」承载掉层——避免与设计表中的 **`frequency`/DOT 节拍**混成两套；若坚持用 Manager 降级，须在表与代码注释中 **显式写清两套钟表如何对齐**（非默认推荐）。
+
+**小结**：**一个 Buff 实例上，DOT 与掉层共用同一时间轴 + 两个累积器**；配置层仍可用 JSON 表达间隔，但 **运行层只维护一套推进逻辑**。
 
 ---
 
@@ -108,7 +136,7 @@
 
 **组合示例（概念）**
 
-- **中毒**：`OnPeriodicTick` + `[ImpactDamage(魔法/真实), …]`（系数从 level 来）。
+- **中毒**：`CurrentLevel` 为 **层数**（§4.3）；**DOT 与每 z 秒掉一层** 均在 **§4.4 统一时间轴** 上推进；`OnPeriodicTick` 中 `[ImpactDamage…]`，伤害基数 **× 当前层数**（由 Dispatcher 读取 `CurrentLevel` × 表内每层系数）。
 - **恐惧**：`OnApply` + `[ControlLock(禁普攻+禁技能), ForcedDisplacement(远离 Provider), StatModify(移速+Δ)]`；周期可空或仅位移刷新。
 
 ---
@@ -133,7 +161,8 @@
 }
 ```
 
-实现时可用 **一份** `MetaBuff : BuffBase` 读表并注册到 `BuffTypeRegistry`（**仅注册一个泛型入口**）， opcode 由表驱动。
+实现时可用 **一份** `MetaBuff : BuffBase` 读表并注册到 `BuffTypeRegistry`（**仅注册一个泛型入口**）， opcode 由表驱动。  
+涉及 **DOT + 周期性掉层** 的 Buff（如中毒），表中 **DOT / 衰减间隔** 建议作为 **`execution`** 或 profile 字段显式给出，并由 **§4.4** 统一推进；不必强依赖 **`config.frequency`** 与 **`ResidualDuration`/demotion** 隐含承担两套节拍。
 
 ---
 
@@ -146,17 +175,62 @@
 
 ## 8. 实施顺序建议（毕设）
 
+与 **§9（MVP / P1 / P2）**：本节为 **依赖先后**；§9 为 **每阶段做多少**。
+
 1. 启动时 **`BuffTypeRegistry.Register<MetaBuff>(...)`** 或按 id 范围注册；保证技能表 **能真正落下 Buff**。
 2. 实现 **Dispatcher**：解析 `execution` → 执行 `ImpactDamage` + 简单 `StatModify`。
-3. 补 **OnPeriodicTick** 与 `BuffConfig.frequency` 对齐。
+3. 在 **MetaBuff（或等价宿主）** 内实现 **§4.4 单一时间轴**（`SinceLastDot` / `SinceLastStackDecay` 等），再由此调用 Dispatcher 执行 **`OnPeriodicTick`** 与可选的 **层衰减**；**避免**与 `ResidualDuration`/`demotion` **无文档地双轨并行**。
 4. 再补 **ControlLock / ForcedDisplacement**（与输入、移动桥对接）。
-5. 技能侧 **OnEvent** 与 Basement 事件 **二期**。
+5. 技能侧 **OnEvent** 与 Basement 事件 **二期**（与 **§9.3** 对应）。
 
 ---
 
-## 9. 文档修订记录
+## 9. MVP / P1 / P2 实施梯度
+
+以下为按 **交付价值** 划分的阶段；**§8** 为技术依赖顺序提要，本节为 **范围裁剪**（可与毕设时间节点对齐）。
+
+### 9.1 MVP（最短闭环）
+
+**实现状态（代码）**：已实现 **§9.1 核心路径**——`Gameplay.Skill.Buff.BuffOpcodeMvpBootstrap` 于 `AfterSceneLoad` 向 **`BuffTypeRegistry`** 注册 **`MetaBuffApplyFactory`**（`buffId` **90001 / 90002**）。宿主 **`MetaBuff`**、**`BuffOpcodeDispatcher`**（仅 **`ImpactDamage` → `ImpactManager`**）、组合常量 **`BuffOpcodeMvpDefinitions`** 位于 **`Assets/.../Gameplay/BuffSystem/Buff/Opcode/`**；**`MetaBuffApplyFactory`** 与 **`BuffOpcodeMvpBootstrap`** 位于 **`Gameplay/Skill/Buff/`**。**90001**：施加时一次魔法伤（基数 25，`Skill` 源）；**90002**：无 OnApply，**每 1s** 周期魔法 DOT（单次 8）。伤害按 **`CurrentLevel` 叠层**倍增（不少于 1 倍）。若 **`BuffData.json`** 暂未配置上述 id，`BuffApplyService` 仍可施加（或对缺表现警）。 **`CombatBoardLiteComponent`** 仍存在时 **`ImpactSystem`** 会写 **`LastDamageFrom`**。**技能步骤**请将 **`buffId`** 设为 **90001 或 90002**。
+
+| 目标 | 内容 |
+|------|------|
+| **技能能挂上「表驱动 Buff」** | 启动路径 **`BuffTypeRegistry.Register`**；**单个** **`MetaBuff`（或极少量占位子类）** 对应表内多条 `buffId`。 |
+| **Opcode 可走通** | **Dispatcher**：至少 **`ImpactDamage` → `ImpactManager.CreateImpactEvent`**（Source=Provider ECS，Target=Owner ECS）；受击者有 **`CombatBoardLiteComponent`** 时 **承伤黑板**可被 **`ImpactSystem`** 更新。 |
+| **配置最小集** | **`OnApply` 非空或可空** + **一条**瞬时伤害 Opcode 即可闭环；`execution` 可先 **手写进代码常量**再落 JSON，或 **只做 1～2 条 Buff 表**。 |
+| **时间轴（精简版）** | MVP 可先 **仅 `OnApply` + 瞬时 Impact**，暂不强制 **§4.4 双累积器**；若需 **单层 DOT**：只实现 **`SinceLastDot`** 单曲式间隔，**不涉及周期性掉层**。 |
+| **不纳入** | `ControlLock`、`ForcedDisplacement`、**§4.4** 双侧节拍 + 叠层递减、**`OnEvent`**、驱散链。 |
+
+**验收**：选目标释放技能 → 目标 **扣血（经 Impact）** → 控制台 / UI 可看 **HP / LastDamageFrom** 变化。
+
+### 9.2 P1（ opcode 与时间轴齐备 + 可做中毒_demo）
+
+| 目标 | 内容 |
+|------|------|
+| **Execution 配置入表** | `BuffJsonData`（或并列 profile）挂载 **`BuffEffectComposition`** 或等价 JSON；Launcher 校验 **opcode 枚举与参数**。 |
+| **§4.4 统一时间轴** | **`MetaBuff` 内**：`SinceLastDot`、`SinceLastStackDecay`（命名可置换）， **`Time.time` 或对局时钟** 二选一侧；**DOT**与**按间隔掉层**（**`CurrentLevel` 递减**）由 **同一宿主**调度。 |
+| **Opcode 扩展** | **`StatModifyCore` / `StatModifyBonus`** 至少一通（与 **`EntityDataComponent`**；或统一走 Impact 改属性）；**简易 `ControlLock`**：写入 ** bitmask 占位组件**（或全局 CC 寄存），输入/普攻管线 **读标记**即可。 |
+| **叠层语义** | 与 **§4.3** 一致：**`CurrentLevel` = 层**； **`BuffConflictResolution`** 与本条毒表 **对齐一条规则**（如 Combine）。 |
+| **技能侧** | 保持 **`Immediate` / `AfterDelay` / `OnCondition`** 可用；事件驱动步骤仍可不实现。 |
+
+**验收**：**中毒类**——每秒 **× 层 × 系数** DOT + **每 z 秒 −1 层**；层归零 Buff 移除或 OnRemove opcode 可走。
+
+### 9.3 P2（表现力与工程化）
+
+| 目标 | 内容 |
+|------|------|
+| **位移与复杂控制** | **`ForcedDisplacement`** 与 **`NavMotorBridge` / MovementFacade**（或 ECS 位移意向）对齐； **`ControlLock` 与 Fear/Taunt 等**拆分测试。 |
+| **链式与子 Buff** | **`ApplyChildBuffById`、`ClearBuffByTag`**（驱散、净化）；**`OnStackChanged`** 钩子与 opcode（可选）。 |
+| **技能节拍** | **`BuffApplicationTriggerKind.OnEvent`** 与 **`GameEventBus` / Basement** 打通；打断、死亡取消挂起会话。 |
+| **观测与容错** | Buff 运行时 **校验 / 日志**（非法 opcode、缺 Provider）；**与 `ResidualDuration`/demotion 混用场景**若在旧 Buff 保留，须有 **单行设计说明**。 |
+
+---
+
+## 10. 文档修订记录
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| 1.4 | 2026-04-17 | §9.1 MVP 代码落地说明；`buffId` 90001/90002 与脚本路径提示。 |
+| 1.2 | 2026-04-17 | §4.3 定稿 `CurrentLevel` 仅叠层；§4.4 单一时间轴驱动 DOT + 掉层；§4.2/§5/§8 联动修订。 |
 | 1.1 | 2026-04-17 | 与实现对齐：废止扁平 `BuffEffect`，补充 §2.3 代码模型（`BuffEffectOpcode`、组合与配方子类）。 |
 | 1.0 | 2026-04-17 | 初稿：opcode 定义、两层触发、现状评估、最小 opcode 集与配置示意 |
