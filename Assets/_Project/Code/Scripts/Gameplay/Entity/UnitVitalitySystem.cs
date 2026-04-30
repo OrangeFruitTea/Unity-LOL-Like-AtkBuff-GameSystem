@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Core.ECS;
 
 namespace Core.Entity
@@ -10,12 +11,15 @@ namespace Core.Entity
     {
         public int UpdateOrder => 32;
 
+        private readonly HashSet<long> _deathAnnounced = new HashSet<long>();
+
         public void Initialize()
         {
         }
 
         public void Destroy()
         {
+            _deathAnnounced.Clear();
         }
 
         public void Update()
@@ -24,16 +28,23 @@ namespace Core.Entity
             {
                 var data = ecs.GetComponent<EntityDataComponent>();
                 if (data.GetData(EntityBaseDataCore.CrtHp) > 1e-9)
+                {
+                    _deathAnnounced.Remove(ecs.Id);
                     continue;
+                }
+
                 if (!ecs.HasComponent<CombatBoardLiteComponent>())
                     continue;
 
                 var board = ecs.GetComponent<CombatBoardLiteComponent>();
-                if (board.KillerEntityId != 0)
-                    continue;
+                if (board.KillerEntityId == 0)
+                {
+                    board.KillerEntityId = board.LastDamageFromEntityId;
+                    ecs.SetComponent(board);
+                }
 
-                board.KillerEntityId = board.LastDamageFromEntityId;
-                ecs.SetComponent(board);
+                if (_deathAnnounced.Add(ecs.Id))
+                    UnitDeathEventHub.Raise(ecs, board.KillerEntityId);
             }
         }
     }

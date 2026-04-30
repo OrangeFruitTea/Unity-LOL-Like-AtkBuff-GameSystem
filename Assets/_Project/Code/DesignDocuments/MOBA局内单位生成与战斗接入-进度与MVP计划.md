@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |----|------|
-| 文档版本 | 1.0 |
+| 文档版本 | 1.1 |
 | 关联文档 | 《MOBA局内单位模块ECS设计文档》、《Buff-Opcode效果列表与触发语义设计文档》 |
 | 适用 | Unity 2022，毕设体量 |
 
@@ -72,6 +72,18 @@
 
 **验收**：两实例，`Faction` 敌对，`Impact`/`Opcode Buff` 可扣血，**`CombatBoard.LastDamage`** 可走；无 Profile 的旧 Prefab **仍能**仅以属性出生（兼容）。
 
+### 4.1 MVP 脚本需求（可按文件落地的规格）
+
+| 脚本路径 | 类（命名空间） | 职责与调用约束 |
+|---------|----------------|----------------|
+| `Scripts/Gameplay/Entity/CombatEntitySpawnProfile.cs` | `CombatEntitySpawnProfile`（`Core.Entity`） | **`MonoBehaviour`**，挂Prefab根或子物体；Inspector 勾选 `AddFaction` / `AddArchetype` / `AddCombatBoardLite` 及 `TeamId`、`Archetype`、`ConfigId`。无此组件 ⇒ `EntitySpawnSystem` 不写阵营/黑板/原型。 |
+| `Scripts/Gameplay/Entity/EntitySpawnSystem.cs` | `EntitySpawnSystem`（`Core.Entity`） | **`SpawnEcsEntity` 顺序**：`CreateEntity` → 绑定 `EntityBase`/Bridge → **`AddBaseComponents`**（必选 `EntityDataComponent.InitializeDefaults`，再 **`GetComponent<CombatEntitySpawnProfile>()`**，按勾选 `EcsWorld.AddComponent`：**Faction → Archetype → CombatBoard**）→ **`EntityEcsLinkRegistry.Register`** → **`RunSpawnExtensions`** →（可选调试 Log）。 **`AddPendingEntity(instance)`**：仅入队，`UpdateOrder=5` 的同一帧结束前出队并完成上述流程。 |
+| `Scripts/Basement/Tools/Debug/TestPlayerSpawner.cs` | `TestPlayerSpawner`（`Core.Entity`） | 协程延后一帧：**`Instantiate(prefab.gameObject, parent,...).GetComponent<EntityBase>()`** → `EcsWorld.Instance.GetEcsSystem<EntitySpawnSystem>().AddPendingEntity(instance)`。**`spawnParent`、`localOffset`** 可选；Prefab 根需 **`EntityBase`（或子类）** + 建议 **`CombatEntitySpawnProfile`**。 |
+| `Scripts/Gameplay/Entity/UnitDeathEventHub.cs` | **`UnitDeathEventHub`（静态）**（`Core.Entity`） | MVP+：`event Action<EcsEntity, long> UnitDied`。**仅派发**，不负责 `Destroy`。 |
+| `Scripts/Gameplay/Entity/UnitVitalitySystem.cs` | `UnitVitalitySystem`（`Core.Entity`） | **`UpdateOrder=32`**（Impact 之后）。每帧：**`CrtHp>0`** 则从「已播报死亡集合」摘除该 ECS Id；否则若缺 `CombatBoardLite` 跳过；否则 **`KillerEntityId==0` 时用 `LastDamageFromEntityId` 补齐** → 若 ECS Id **首次**进入击杀态则 **`UnitDeathEventHub.Raise(victim, killer)`**（同名实体复活前不重复派发）。 |
+
+**Prefab 自检清单**：根节点 `EntityBase`；若要对打则 `CombatEntitySpawnProfile`：`AddFaction/AddCombatBoardLite`、敌我 **`TeamId` 敌对**、`Archetype` 常为 `Hero`；调试技能/Buff/Opcodes 照旧走表与桥接。
+
 ---
 
 ## 5. P1 阶段 — 编码需求
@@ -88,6 +100,29 @@
 | **死亡销毁** | 小模块 | 订阅 Vitality/HP：Host **`GameObject.SetActive(false)`** 或 **`Destroy`**，并 **`EcsManager.DestroyEntity`**（注意与 **EntityBase.OnDestroy** 顺序，防双删）。 |
 
 **验收**：塔能 **IdleScan→Impact** 打进入射程的 **不同阵营** 单位；至少 **一波兵** 沿路径移动；**一只野怪** 超 **Leash** 回巢。
+
+### 5.1 P1 脚本需求（专精挂载 + Spawner + 移动/野区 AI）
+
+#### 管线约定（与代码一致）
+
+**`Register` 完成之后**，`EntitySpawnSystem.RunSpawnExtensions` 对宿主及子树上的 **`MonoBehaviour`** 逐项检测：若 **`enabled` 且实现 `IEntitySpawnExtension`**，则调用 **`OnAfterEcsBaseSpawned(ecs, host)`**。专精 ECS 组件只应在此回调或其实现体内 `EcsWorld.AddComponent`，**不要**再改 `EntityData`/`Profile` 已写好的一批基础组件的顺序。
+
+| 脚本路径 | 类（命名空间） | 要点 |
+|---------|----------------|------|
+| `Scripts/Gameplay/Entity/IEntitySpawnExtension.cs` | `IEntitySpawnExtension`（`Core.Entity`） | 方法：`void OnAfterEcsBaseSpawned(EcsEntity ecs, EntityBase host);`。 |
+| `Scripts/Gameplay/Entity/Tower/TowerEcsAttachments.cs` | `TowerEcsAttachments : MonoBehaviour, IEntitySpawnExtension` | Inspector 可调 **`TowerModulePreset`** → 运行时 **`TowerModuleComponent`** + **`TowerCombatCycleComponent`（默认值）**。塔 Prefab 仍需 **`CombatEntitySpawnProfile`**（`Faction`、`CombatBoardLite`、`Archetype=Tower`、敌我分队）。 |
+| `Scripts/Gameplay/Entity/Spawn/TowerSpawner.cs` | `TowerSpawner`（`Core.Entity.Spawn`） | **`Start`**：`Instantiate` → `GetComponent<EntityBase>` → `AddPendingEntity`；`towerPrefab`、`spawnParent`、`localOffset`。 |
+| `Scripts/Gameplay/Entity/LaneMinion/LaneMinionEcsAttachments.cs` | `LaneMinionEcsAttachments`（`Core.Entity.Minions`） | 配置 `WaveSpawnId`、`LaneIndex`、`PathwayId`；回调里 **`LaneMinionModuleComponent.WaypointIndex=0`**。 |
+| `Scripts/Gameplay/Entity/LaneMinion/LaneMinionWaypointRuntime.cs` | 静态 **`LaneMinionWaypointRuntime`**（`Core.Entity.Minions`） | 字段：**`Transform[] Waypoints`**。由 **`MinionWaveSpawner.Awake`** 从 **`waypointRoot` 的子节点顺序** 填充 **`SetWaypoints`**。 |
+| `Scripts/Gameplay/Entity/LaneMinion/LaneMinionMoveSystem.cs` | `LaneMinionMoveSystem`（`IEcsSystem`，**`UpdateOrder=39`**） | 若 Waypoints 为空则 no-op；否则沿当前下标 **`MoveTowards`**，抵达阈值后 **`WaypointIndex++`**。**依赖** `EntityEcsLinkRegistry` 取 Transform；与 Nav 对齐时可替换为推进策略，接口保持读 `LaneMinionModuleComponent`。 |
+| `Scripts/Gameplay/Entity/Spawn/MinionWaveSpawner.cs` | `MinionWaveSpawner`（协程）（`Core.Entity.Spawn`） | **`Awake`** 建立路径 **`LaneMinionWaypointRuntime`**；**`Start`** 循环：`minionsPerWave` 次 Instantiate + **`AddPendingEntity`**，`waveIntervalSeconds`；`startDelaySeconds`。 |
+| `Scripts/Gameplay/Entity/Jungle/JungleCreepEcsAttachments.cs` | `JungleCreepEcsAttachments`（`Core.Entity.Jungle`） | **`JungleCreepModuleComponent`**：`CampId`、`LeashRadius`、`AnchorSlotIndex`；可选 **`leashCenterFromSpawnPosition`**（用宿主 `Transform.position` 写 **`LeashCenter`**）。仍需 Profile（阵营、黑板、原型 `JungleMonster`）。 |
+| `Scripts/Gameplay/Entity/Spawn/JungleCampSpawner.cs` | `JungleCampSpawner`（`Core.Entity.Spawn`） | **`Start`** 单次生成并入队（与 `TowerSpawner` 同套路）。 |
+| `Scripts/Gameplay/Entity/Jungle/JungleAiSystem.cs` | `JungleAiSystem`（**`UpdateOrder=38`**） | **`Idle`**：以 **`LeashCenter` 为球心、`LeashRadius` 为半径** 调用 **`CombatTargetAcquire.TryPickNearestHostileInRangeFromWorldPoint`** → `Pursue` 写 **`AttackTargetEntityId`**；**`Pursue`**：超出租赁距 → **`Returning`** 清黑板；追击 **MoveTowards**；近战间隔用 **`ImpactManager.CreateImpactEvent`**（`NormalAtk`/物理减 HP）；**`Returning`**：**MoveTowards(LeashCenter)**，贴近后 **`Idle`**。 |
+| `Scripts/Gameplay/Entity/CombatTargetAcquire.cs` | 扩展方法所在静态类 **`CombatTargetAcquire`** | 新增 **`TryPickNearestHostileInRangeFromWorldPoint(origin, aggressor, faction, range, out target)`** 供野区与任意「非自身坐标为球心」的索敌。 |
+| `Scripts/Gameplay/Entity/DestroyHostOnUnitDeath.cs` | `DestroyHostOnUnitDeath`（`Core.Entity`） | **`OnEnable` 订阅 `UnitDeathEventHub.UnitDied`**：若 **`host.BoundEcsEntity.Id == victim.Id`** 则 **`Destroy(gameObject)`** 或 **`SetActive(false)`**。**勿**在此处再调 `EcsManager.DestroyEntity`（ **`EntityBase.OnDestroy`** 已处理）。 |
+
+**场景挂载提示**：兵线 **`MinionWaveSpawner.waypointRoot`** 的子物体顺序即为路径；多路兵线可多个 Spawner **先后**写入同一静态 Waypoints——毕设单方推进时保持一个 Spawner 或扩展为通路 id。
 
 ---
 
@@ -113,7 +148,7 @@ Prefab + CombatEntitySpawnProfile
         → EntitySpawnSystem.AddPendingEntity
         → CreateEntity + EntityData (+ Faction / Archetype / CombatBoard?)
         → EntityEcsLinkRegistry.Register
-        → [可选] Tower/Minion/Jungle Factory AddComponent(...)
+        → MonoBehaviour Implement IEntitySpawnExtension → OnAfterEcsBaseSpawned（塔/兵/野专精）
         → 技能/Buff/塔系统读 ECS + Transform
 ```
 
@@ -124,3 +159,14 @@ Prefab + CombatEntitySpawnProfile
 | 版本 | 日期 | 说明 |
 |------|------|------|
 | 1.0 | 2026-04-17 | 初稿：差距分析 + MVP/P1/P2；与 CombatEntitySpawnProfile、Spawner 修正同步。 |
+| 1.1 | 2026-04-17 | MVP/P1：**§4.1 / §5.1 脚本规格表**（路径、Inspector、管线顺序）；与 `IEntitySpawnExtension`、`UnitDeathEventHub`、三路 Spawner、`LaneMinionMoveSystem`、`JungleAiSystem`、`DestroyHostOnUnitDeath` 实现同步。 |
+
+### 附录 A — MVP / P1 脚本交付 Checklist（对账）
+
+- [ ] **`CombatEntitySpawnProfile`**：敌我塔/兵/野怪 **`TeamId`、`Archetype`** 配对正确，`AddCombatBoardLite` 为真方有 **`LastDamage` / Killer 链路**。  
+- [ ] **`TestPlayerSpawner`**：确认为 **`Instantiate` 产出实例** 入队而非 Prefab 资产。  
+- [ ] **`UnitDeathEventHub` + UnitVitalitySystem**：击倒只触发一次；可选 **`DestroyHostOnUnitDeath`** 挂要被销毁的根。  
+- [ ] **`IEntitySpawnExtension`**：**塔 Prefab** 挂 **`TowerEcsAttachments`**；**兵线** 挂 **`LaneMinionEcsAttachments`**；**野怪** 挂 **`JungleCreepEcsAttachments`**。  
+- [ ] **`TowerSpawner` / `MinionWaveSpawner` / `JungleCampSpawner`**：**Prefab 根带 `EntityBase`**，且 **`Start`/`Awake` 时机**早于或独立于首帧 ECS `Update`。  
+- [ ] **`LaneMinionWaypointRuntime`**：`MinionWaveSpawner.Awake` 已跑过再出兵；或首波延迟 `startDelaySeconds`。  
+- [ ] **`JungleAiSystem`**：**租赁圆心** 与 **`JungleCreepEcsAttachments.leashCenterFromSpawnPosition`** 一致；野区与兵线 **敌对 Faction** 能在 `CombatHostility` 下互打。

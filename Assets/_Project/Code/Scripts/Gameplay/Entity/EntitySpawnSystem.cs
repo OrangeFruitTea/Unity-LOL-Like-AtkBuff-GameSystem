@@ -45,6 +45,7 @@ namespace Core.Entity
             sceneEntity.entityBridge.BoundEcsEntity = ecsEntity;
             AddBaseComponents(ecsEntity, sceneEntity);
             EntityEcsLinkRegistry.Register(sceneEntity);
+            RunSpawnExtensions(ecsEntity, sceneEntity);
             Debug.Log($"SpawnSystem创建ECS实体[ID: {ecsEntity.Id}]，关联场景实体: [{sceneEntity.EntityId}]");
         }
 
@@ -80,6 +81,21 @@ namespace Core.Entity
                 var board = new CombatBoardLiteComponent();
                 board.InitializeDefaults();
                 EcsWorld.AddComponent(ecsEntity, board);
+            }
+        }
+
+        private static void RunSpawnExtensions(EcsEntity ecsEntity, EntityBase sceneEntity)
+        {
+            if (sceneEntity == null)
+                return;
+
+            foreach (var mb in sceneEntity.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                if (mb == null || !mb.enabled)
+                    continue;
+
+                if (mb is IEntitySpawnExtension ext)
+                    ext.OnAfterEcsBaseSpawned(ecsEntity, sceneEntity);
             }
         }
 
