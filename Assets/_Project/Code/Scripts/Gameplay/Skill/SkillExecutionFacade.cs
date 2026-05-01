@@ -1,5 +1,6 @@
 using Core.ECS;
 using Core.Entity;
+using Gameplay.Presentation;
 using Gameplay.Skill.Config;
 using Gameplay.Skill.Context;
 using Gameplay.Skill.Ecs;
@@ -61,6 +62,7 @@ namespace Gameplay.Skill
             if (respectCooldown)
                 SkillCooldownTracker.NotifyCast(ecsId, skillId, def.CooldownSeconds);
 
+            context.Caster.GetComponent<UnitAnimDrv>()?.NotifySkillCastStarted();
             return true;
         }
 

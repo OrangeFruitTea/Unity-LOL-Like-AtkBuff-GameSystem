@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Core.ECS;
 using Core.Entity;
+using Gameplay.Presentation;
 using UnityEngine;
 
 namespace Core.Combat
@@ -271,6 +272,11 @@ namespace Core.Combat
                 board.LastDamageFromEntityId = impactEvent.Source.Id;
                 targetEntity.SetComponent(board);
             }
+
+            if (impactEvent.TargetAttribute == TargetAttribute.Hp &&
+                impactEvent.OperationType == ImpactOperationType.Subtract &&
+                finalValue > 0f)
+                HitFxRelay.RaiseHpDamaged(impactEvent.Target, finalValue);
             
             // 更新目标实体的组件
             targetEntity.SetComponent(targetData);

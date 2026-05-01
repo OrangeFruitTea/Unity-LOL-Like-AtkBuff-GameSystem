@@ -1,5 +1,6 @@
 using Core.Entity;
 using Core.ECS;
+using Gameplay.Presentation;
 using UnityEngine;
 
 namespace Gameplay.Combat.Targeting
@@ -82,14 +83,19 @@ namespace Gameplay.Combat.Targeting
                 return;
             }
 
-            if (!_dispatch.TryDispatchNormalAttack(attacker, out var err))
+            var anim = attacker.GetComponent<UnitAnimDrv>();
+            if (anim != null)
+            {
+                anim.BeginNormalAttackSwing(_dispatch);
+            }
+            else if (!_dispatch.TryDispatchNormalAttack(attacker, out var err))
             {
                 Debug.Log($"[MvpHeroBasicAttack] dispatch failed: {err}");
                 return;
             }
 
             _nextSwingTime = Time.time + attackCooldownSeconds;
-            Debug.Log($"[MvpHeroBasicAttack] dispatched → board id={id}");
+            Debug.Log($"[MvpHeroBasicAttack] {(anim != null ? "swing queued (AnimEvt_Strike / fallback)" : "dispatched")} → board id={id}");
         }
 
         private static long ReadBoardAttackHint(EntityBase caster)
