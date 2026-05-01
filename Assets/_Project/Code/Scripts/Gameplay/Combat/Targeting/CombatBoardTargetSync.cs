@@ -37,5 +37,22 @@ namespace Gameplay.Combat.Targeting
             ecs.SetComponent(board);
             return true;
         }
+
+        /// <summary>主攻与仇恨同槽写入（塔/近战索敌对齐用）。</summary>
+        public static bool SetAttackAndThreatSameTarget(EntityBase caster, long targetEcsId)
+        {
+            if (caster == null)
+                return false;
+
+            var ecs = caster.BoundEcsEntity;
+            if (!ecs.IsValid() || !ecs.HasComponent<CombatBoardLiteComponent>())
+                return false;
+
+            var board = ecs.GetComponent<CombatBoardLiteComponent>();
+            board.AttackTargetEntityId = targetEcsId;
+            board.ThreatTargetEntityId = targetEcsId;
+            ecs.SetComponent(board);
+            return true;
+        }
     }
 }

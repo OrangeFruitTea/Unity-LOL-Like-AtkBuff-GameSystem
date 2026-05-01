@@ -60,7 +60,7 @@ public static class BuffOpcodeDispatcher
         }
 
         uint stacks = runtimeData != null ? System.Math.Max(1u, runtimeData.CurrentLevel) : 1u;
-        var impacts = new ImpactManager(world);
+        var impacts = world.CombatImpacts;
 
         foreach (var ins in instructions)
         {

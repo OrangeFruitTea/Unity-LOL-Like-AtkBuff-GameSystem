@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Gameplay.Combat.Targeting
 {
-    /// <summary>MVP：<c>Acquire</c> → <see cref="ICombatImpactDispatch.TryDispatchNormalAttack"/>；节流在调用侧。</summary>
+    /// <summary>MVP：<c>Acquire</c> → Commit 黑板 → <see cref="ICombatImpactDispatch"/>（仅从板读受害者）。</summary>
     [DisallowMultipleComponent]
     public sealed class MvpHeroBasicAttackDebugBridge : MonoBehaviour
     {
@@ -42,7 +42,7 @@ namespace Gameplay.Combat.Targeting
         {
             var req = new TargetAcquisitionRequest(TargetingShapeKind.NearestInSphere, attacker, rangeOrRadius: 0f);
             var result = _acquisition.Acquire(req);
-            DispatchFirstHit(result);
+            AfterAcquireCommitAndDispatch(result);
         }
 
         private void TrySwingBoardHint()
@@ -50,10 +50,11 @@ namespace Gameplay.Combat.Targeting
             long hint = ReadBoardAttackHint(attacker);
             var req = new TargetAcquisitionRequest(TargetingShapeKind.PointEntity, attacker, hint, rangeOrRadius: 0f);
             var result = _acquisition.Acquire(req);
-            DispatchFirstHit(result);
+            AfterAcquireCommitAndDispatch(result);
         }
 
-        private void DispatchFirstHit(TargetAcquisitionResult result)
+        /// <summary>将解析结果写入板后 Strike 只认黑板。</summary>
+        private void AfterAcquireCommitAndDispatch(TargetAcquisitionResult result)
         {
             if (!result.Succeeded)
             {
@@ -68,14 +69,27 @@ namespace Gameplay.Combat.Targeting
             }
 
             var vic = result.SuggestedPrimary != null ? result.SuggestedPrimary : result.Hits[0];
-            if (!_dispatch.TryDispatchNormalAttack(attacker, vic, out var err))
+            long id = vic.BoundEcsEntity.Id;
+            if (id == 0)
+            {
+                Debug.Log("[MvpHeroBasicAttack] victim has no ecs id");
+                return;
+            }
+
+            if (!CombatBoardTargetSync.SetAttackAndThreatSameTarget(attacker, id))
+            {
+                Debug.LogWarning($"{nameof(MvpHeroBasicAttackDebugBridge)}: SetAttackAndThreatSameTarget failed (CombatBoard?).");
+                return;
+            }
+
+            if (!_dispatch.TryDispatchNormalAttack(attacker, out var err))
             {
                 Debug.Log($"[MvpHeroBasicAttack] dispatch failed: {err}");
                 return;
             }
 
             _nextSwingTime = Time.time + attackCooldownSeconds;
-            Debug.Log($"[MvpHeroBasicAttack] dispatched normal atk → {vic.name}");
+            Debug.Log($"[MvpHeroBasicAttack] dispatched → board id={id}");
         }
 
         private static long ReadBoardAttackHint(EntityBase caster)

@@ -6,6 +6,7 @@ using Core.Combat;
 using Core.Entity.Jungle;
 using Core.Entity.Minions;
 using UnityEngine;
+using Core.Gameplay;
 using Basement.Runtime;
 using Basement.Utils;
 
@@ -22,6 +23,23 @@ namespace Core.ECS
     public class EcsWorld : Singleton<EcsWorld>
     {
         public EcsEntityManager EcsManager { get; private set; }
+
+        private ImpactManager _combatImpacts;
+
+        /// <summary>
+        /// 全工程唯一 <see cref="ImpactManager"/>；<b>首次访问</b>时创建。<br/>
+        /// 不要求与 <see cref="AddEcsSystem"/> 在源码行上相邻；各系统在 <see cref="IEcsSystem.Initialize"/> 里取用即可。
+        /// </summary>
+        public ImpactManager CombatImpacts
+        {
+            get
+            {
+                if (_combatImpacts == null)
+                    _combatImpacts = new ImpactManager(this);
+                return _combatImpacts;
+            }
+        }
+
         // List应保持有序
         private readonly List<IEcsSystem> _systems = new List<IEcsSystem>();
         private readonly List<Action> _sortedUpdateDelegates = new List<Action>();
@@ -44,6 +62,7 @@ namespace Core.ECS
             }
             _systems.Clear();
             _sortedUpdateDelegates.Clear();
+            _combatImpacts = null;
             base.OnDestroy();
         }
 

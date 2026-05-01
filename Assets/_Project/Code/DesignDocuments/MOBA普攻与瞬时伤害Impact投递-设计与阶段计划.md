@@ -2,237 +2,301 @@
 
 | 项 | 内容 |
 |----|------|
-| **文档版本** | 2.0.1 |
-| **定型方案** | **A + C**：**选敌服务 `ITargetAcquisitionService` → 填入 `SkillCastContext`（方案 A）** + **`CombatBoardLite` 管单体战术状态 / Context 管本次施法事务（方案 C）** |
+| **文档版本** | **3.0.1** |
+| **核心理念** | **普攻与技能共用「统一战斗行动」骨架**（选目标→闸门→产出效果）；**玩家侧只是操作与配置的差别**，详见 **§2** |
+| **定型方案** | **A + C**：**`ITargetAcquisitionService` → `SkillCastContext`（技能）**；**黑板管持续主目标 / Context 管单次施法（含 AoE 列表）** |
 | 关联文档 | 《Impact系统使用方法指导文档》《MOBA局内单位模块ECS设计文档》《MOBA局内单位生成与战斗接入-进度与MVP计划》；技能侧 `SkillCastContext`、`SkillCastPipelineSystem` |
-| 适用 | Unity 2022；毕设向「可走通链路 + 可写进论文的职责划分」 |
+| 适用 | Unity 2022；毕设「可走通 + 职责清晰 + **论文叙事统一」** |
 
 ---
 
 ## 1. 背景与问题
 
-防御塔已通过 **`TowerCombatCycleSystem`** 在 Strike 节拍落地时调用 **`ImpactManager.CreateImpactEvent`**，经 **`ImpactSystem`**（`UpdateOrder ≈ 31`）结算 HP，并向目标 **`CombatBoardLiteComponent.LastDamageFromEntityId`** 写入；**`UnitVitalitySystem`** 可据此补 **`KillerEntityId`**。
+防御塔等已通过 **`TowerCombatCycleSystem`** 在节拍点调用 **`ImpactManager.CreateImpactEvent`**，经 **`ImpactSystem`** 改 HP 并驱动 **`CombatBoardLite.LastDamage*`**、`UnitVitality` 击倒链。
 
-**英雄侧缺少稳定触发层**：没有统一在合法时机把 **单体普攻** 与 **技能（含未来 AoE）** 接到 **`CreateImpactEvent`** 或 **技能 Buff 流水线**。
-
-**战斗真理源**：对 **HP 的修改** 仍推荐走 **`ImpactSystem`**（瞬时伤害）或 **Buff/Opcode 内部再调 Impact**；禁止双通道手写改血（迁移期须标注例外）。
+英雄侧需提供 **稳定触发层**，且与设计一致地处理 **普攻**与**技能**。本文在 **§2** 先说清 **二者的统一管线**，再以 **§2.4～§2.7** 展开 **分型（A+C、黑板对齐）**，避免「两套井水不犯河水」的叙事。
 
 ---
 
-## 2. 定型架构：方案 A + C（总则）
+## 2. 统一战斗行动模型与架构（先读本节）
 
-### 2.1 职责划分（C：黑板 vs 施法事务）
+### 2.1 通俗：普攻管线 vs 技能管线（玩家体感）
+
+两处流程在脑子里可以落成 **同一张照片**，只是 **后边走的「剧本」长短不同**：
+
+| 阶段 | **普攻（通俗说法）** | **技能（通俗说法）** |
+|------|----------------------|----------------------|
+| **定目标** | 锁一个人（点敌 / 自动最近敌）；理想上还记在 **黑板主攻**（§2.7） | 单体 / 一群人 / 一块地：**选敌或几何算出名单**，装进 **`SkillCastContext`**（黑板只保「主」，列表放 Context） |
+| **确认出手** | 距离、敌意、还活着、攻速间隔等 | 再加 CD、耗蓝、沉默等 **技能闸门** |
+| **出效果** | 往往等价于「**一下**普攻 Impact」——短剧本 | **多步**：时间轴上 Buff / Opcode / 间接触发 Impact，长剧本 |
+
+用一句话：**都是「决定要打谁→检查能不能打→让战斗系统结出结果」**；普攻是 **一页纸剧本**，常见技能是 **多页连续剧**。
+
+### 2.2 设计结论：可以合并骨架，分叉在「配方」与「门面」
+
+- **骨架统一（推荐写法）**：**解析目标**（`Acquire`）→ **（可选）写黑板主攻**→ **闸门**（资源/CD/沉默）→ **执行层**：要么是 **`ICombatImpactDispatch`/`CreateImpactEvent` 主导的短路径**，要么是 **`SkillCastPipelineSystem`** 主导的表驱动 Buff/Opcode。
+- **给玩家暴露的差异**：主要在 **按键/指示器/表现**（前摇弹道、圈圈），底层不必维护两套互不交谈的流水线。
+- **仍要分叉的语义（不是驳回合并，是实现时要留钩子）**：目标 **基数**（单体 vs AoE）、**伤害节奏**（单拍 vs 多段）、普攻常绑 **攻速** 技能常绑 **表里 CD**。
+
+与工程现状的对应：**技能**已由 Context + Resolver + Pipeline 占位；**普攻**可走「同一套 Acquire + 再走短路径 Dispatch」，或通过 **普攻 = 特殊 SkillId（一步 Impact）** 完全收入技能门（毕设任选其一作为主路径并在文档/README 冻结）。
+
+### 2.3 统一骨架（一张图）
+
+```
+                    ┌─────────────────────────────┐
+                    │  UI / AI：操作与意图         │
+                    └──────────────┬──────────────┘
+                                   ▼
+         ┌─────────────────────────────────────────────┐
+         │  选敌：ITargetAcquisitionService.Acquire（可复用 CombatTargetAcquire）│
+         └──────────────┬──────────────────────────────┘
+                        ▼
+         ┌──────────────────────────────┐      黑板：AttackTargetEntityId（单体/UI）
+         │  可选 Commit（§2.7）           │ ◄──── Context：PrimaryTarget + SecondaryTargets
+         └──────────────┬───────────────┘       （AoE / 列表，单次施法）
+                        ▼
+         ┌─────────────────────────────────────────────┐
+         │  闸门：普攻间隔 / 技能 CD · 沉默 · CastRange …   │
+         └──────────────┬──────────────────────────────┘
+                        ▼
+              ┌─────────┴─────────┐
+              ▼                   ▼
+      普攻短路径 · Impact    技能长路径 · TryBeginCast
+                                   → Opcode/Buff→（可能）Impact
+```
+
+**§3** 及以下接口表，均可视为对上述骨架的 **可替换零件**描述。
+
+---
+
+### 2.4 职责划分（方案 C）
 
 | 载体 | 语义 | 生命周期 | 典型写入方 |
 |------|------|----------|------------|
-| **`CombatBoardLiteComponent`** | **战术/UI 层「当前锁谁打」**（单体） | **持续**，随点选/AI 切换 | 玩家输入、`CombatTargetAcquire` 式 AI |
-| **`SkillCastContext`** | **本次 cast 的实例数据**：`PrimaryTarget`、`SecondaryTargets`、（P2 可扩）几何意图 | **单次施法**，与 `TryBeginCast` session 对齐 | 施法闸门在 **确认施法** 时统一组装 |
-| **`ITargetAcquisitionService`（A）** | **几何/规则 → 命中实体列表** | **无状态服务**，随调随用 | 施法确认前、普攻出手前 |
+| **`CombatBoardLiteComponent`** | **「当前主攻锁谁」（单体/UI）** | **持续** | 点选、`CombatTargetAcquire` 类 AI |
+| **`SkillCastContext`** | **本次行动**实例：`PrimaryTarget`、`SecondaryTargets` | **单次** cast | 普攻若走 Context 同上；技能在 `TryBeginCast` 前组装 |
+| **`ITargetAcquisitionService`（方案 A）** | 几何/规则 → **Hits**（无状态，不写黑板不绑 Context） | 随调随用 | **普攻出手前 / 技能确认前**共用 |
 
-**硬规则**：**AoE / Cone / Line 的批量命中只进入 `SkillCastContext.SecondaryTargets`（及必要的 `PrimaryTarget` 约定），不写入黑板多槽。** 黑板至多维护 **一个** `AttackTargetEntityId` 作为 **主指示/UI/普攻默认目标**。
+**硬规则**：AoE / Cone / Line 批量命中落在 **`SecondaryTargets`**（含 Primary 约定）；**不写满黑板多槽**。
 
-### 2.2 执行顺序（口述）
+---
 
-1. **输入**：点选单位 → 写 **`AttackTargetEntityId`**；范围技能 → UI 给出几何参数（P1+）。  
-2. **施法/普攻确认**：调用 **`ITargetAcquisitionService.Acquire`** → 得到 **`TargetAcquisitionResult`**。  
-3. **拼装 Context**：`PrimaryTarget` / `Clear + AddRange(SecondaryTargets)` 按 **§3.6** 约定写入。  
-4. **单体普攻**：可直接 **`ICombatImpactDispatch.TryDispatchNormalAttack`**（MVP）或走极短技能定义（P1）。  
-5. **技能**：**`SkillExecutionFacade.TryBeginCast`** → 现有 **`DefaultTargetResolver`** 消费 Context（不变更解析器语义）。
+### 2.5 执行顺序（在统一骨架下的「分型」口述）
 
-### 2.3 NPC / 玩家与写入权
+1. **输入/UI**：单体 → **黑板或 Hint**；范围 → UI 几何（P1+）。  
+2. **`Acquire`** → `TargetAcquisitionResult`。  
+3. **技能分枝**：拼装 **`SkillCastContext`** → **`TryBeginCast`** → Resolver → Pipeline。  
+4. **普攻分枝**：**`Commit`**（§2.7）→ **`ICombatImpactDispatch`**（或等价 **一步技能表**）；目标态 Strike **读黑板** 或与 Commit **同一 id**。  
+5. **`ImpactSystem`**：仍是 HP 与其它战斗真理源的 **汇合点**。
+
+---
+
+### 2.6 NPC / 玩家与写入权
 
 | 通道 | 黑板 | Context |
 |------|------|---------|
-| **NPC AI** | 索敌后写 `AttackTargetEntityId` | 托管施法时由 AI 调 `Acquire` 再 `TryBeginCast` |
-| **玩家** | 点选写 `AttackTargetEntityId` | 按键确认时 **从黑板可选回填 Primary**，再 `Acquire` 补 **`SecondaryTargets`** |
+| **NPC** | 索敌后 Commit | AI 托管施法：**Acquire→Context→TryBeginCast** |
+| **玩家** | 点选 Commit | **确认键**拼装 Context **或** 走普攻短路径 |
 
-**写入权**：玩家操控期间 **仅输入层** 写黑板 `AttackTarget`；切 **AI 接管** 后仅 AI 写，避免抖动（与 §2 原约定一致）。
+**写入权**：玩家操控帧内 **仅输入** 抢写黑板主攻；托管后仅 AI，防抖动。
+
+---
+
+### 2.7 主攻黑板与 Strike（与塔对齐，可选但很值得）
+
+**意图**：**索敌先有结果 → 记在 `AttackTargetEntityId` → Strike 再读黑板**（或 Dispatch 与该 id **强制一致**），与塔、野区一致，便于 UI/Opcode/复盘。
+
+#### 2.7.1 单位类型对照
+
+| 单位 / 分枝 | 索敌 | 写 `AttackTargetEntityId` | Strike |
+|-------------|------|---------------------------|--------|
+| **塔** | `CombatTargetAcquire` | ✓ | 读板 → Impact |
+| **野怪** | Leash 内选敌 | ✓ Pursue | 与板一致 |
+| **英雄普攻（目标态）** | `Acquire` | ✓ Strike 前 **Commit** | **读板** **或** 与 Commit id 对齐 |
+| **英雄（过渡期）** | 同左 | 可与 Dispatch 并行，**必须同 id**（技术债） |
+
+#### 2.7.2 仓库现状核对
+
+| 项 | 结论 |
+|----|------|
+| **塔 / 野区** | 已：写板 → 出手与板一致 |
+| **`DefaultCombatImpactDispatch`** | 当前可能 **不写/不读**板，仅以入参 `victim` 投 Impact |
+| **`DefaultTargetAcquisitionService`** | **无状态**不写板（OK）；应由 **分枝**调用 **Commit** |
+| **点选写板** | `CombatBoardRaySelectTarget`、`CombatBoardTargetSync` 仅有 **点击** |
+
+#### 2.7.3 推荐契约（仅文档）
+
+| 契约 | 说明 |
+|------|------|
+| **`CommitPrimaryAttackTarget`** | 写 `AttackTargetEntityId`；可同步 `ThreatTargetEntityId`（毕设简化） |
+| **`TryResolveStrikeVictimFromBoard`** | 读板 → Registry → 校验 → 供 ECS 节拍或 Dispatch |
+| **`CombatTargetAcquire`** | **算法复用**：成功后可 **Commit**；或 Acquire 可选 **CommitToCombatBoard**（P1 选项） |
+
+#### 2.7.4 分阶段（MVP′ / P1 / P2）
+
+- **MVP′**：任一普攻路径在 **`CreateImpactEvent` 前** `AttackTargetEntityId = victim.Id`（与入参一致）；最近敌在 **Acquire 成功后立刻 Commit**。  
+- **P1**：Dispatch **仅从黑板解 victim** **或** 入参与板不符则告警/失败；**Acquire+Commit** 文档化为 AI/输入共用步骤。  
+- **P2**：普攻 **时间表 HitFrame** 只读板；Commit 与回放 tick 对齐。
 
 ---
 
 ## 3. 接口与数据契约（A + C）
 
-> 以下为 **设计层契约**；命名空间实现时可选用 `Gameplay.Combat.Targeting`、`Core.Entity` 等与工程规范一致即可。
+命名空间实现可与工程一致（如 **`Gameplay.Combat.Targeting`**）。
 
-### 3.1 `TargetingShapeKind`（请求形态枚举）
+### 3.1 `TargetingShapeKind`
 
 | 值 | 含义 | MVP | P1 | P2 |
 |----|------|-----|----|----|
-| `PointEntity` | 明确单体（黑板 id 或射线命中） | ✓ | ✓ | ✓ |
-| `NearestInSphere` | 以施法者为球心、`AtkDistance` 最近敌 | ✓（Debug/AI） | ✓ | ✓ |
-| `GroundCircle` | 地面圆心 + 半径 | — | ✓ | ✓ |
+| `PointEntity` | 单体（黑板 id / 射线） | ✓ | ✓ | ✓ |
+| `NearestInSphere` | 施法者球心 + `AtkDistance` 最近敌 | ✓ | ✓ | ✓ |
+| `GroundCircle` | 地面圆 + 半径 | — | ✓ | ✓ |
 | `Cone` | 原点 + 朝向 + 角 + 深 | — | 可选 | ✓ |
-| `Line` | 线段/扫掠（宽厚或胶囊） | — | 可选 | ✓ |
+| `Line` | 线段/扫掠 | — | 可选 | ✓ |
 
-### 3.2 `TargetAcquisitionRequest`（请求 DTO，建议 `readonly struct`）
+### 3.2 `TargetAcquisitionRequest`（`readonly struct`）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `Shape` | `TargetingShapeKind` | 决定解释方式 |
-| `Caster` | `EntityBase` | 非空；用于位置、阵营、`BoundEcsEntity` |
-| `PrimaryEntityIdHint` | `long` | 可选；`**AttackTargetEntityId**` 回填，0 表示无 |
-| `WorldOrigin` | `Vector3` | Caster 脚下 / 地面落点 / 弧形原点 |
-| `WorldDirection` | `Vector3` | Cone/Line 朝向（建议归一化） |
-| `RangeOrRadius` | `float` | 普攻距离 / 圆半径 / 锥深 / 线段长 |
-| `SecondaryParam` | `float` | 圆锥半角（度）、线宽等 |
-| `IncludeDead` | `bool` | 默认 false；筛 `CrtHp > ε` |
+| `Shape` | `TargetingShapeKind` | 解释分支 |
+| `Caster` | `EntityBase` | 非空 |
+| `PrimaryEntityIdHint` | `long` | **`AttackTargetEntityId`** 提示，0 无 |
+| `WorldOrigin` | `Vector3` | 脚点 / 落点 / 弧心 |
+| `WorldDirection` | `Vector3` | Cone/Line 向 |
+| `RangeOrRadius` | `float` | ≤0 常用 `AtkDistance` |
+| `SecondaryParam` | `float` | 半角 / 线宽等 |
+| `IncludeDead` | `bool` | 默认 false |
 
-### 3.3 `TargetAcquisitionResult`（解析结果）
+### 3.3 `TargetAcquisitionResult`
 
 | 成员 | 类型 | 说明 |
 |------|------|------|
-| `Succeeded` | `bool` | 是否可作后续拼装 |
-| `Error` | `string` | 失败原因（超出距离、无合法目标等） |
-| `Hits` | `IReadOnlyList<EntityBase>` | 去重后的命中集合（**顺序稳定**，供表驱动多段伤害） |
-| `SuggestedPrimary` | `EntityBase` | 可选；**指向「主目标」**（如离圆心最近敌），供填 `PrimaryTarget` |
+| `Succeeded` | `bool` | — |
+| `Error` | `string` | — |
+| `Hits` | `IReadOnlyList<EntityBase>` | **稳定顺序** |
+| `SuggestedPrimary` | `EntityBase` | 填 `PrimaryTarget` 用 |
 
 ### 3.4 `ITargetAcquisitionService`
 
 ```csharp
 public interface ITargetAcquisitionService
 {
-    /// <summary>无状态解析；不写黑板、不写 Context。</summary>
+    /// <summary>无状态；不写黑板、不写 Context。与 §2.3 前两步一致。</summary>
     TargetAcquisitionResult Acquire(in TargetAcquisitionRequest request);
 }
 ```
 
-**实现备注**：内部依赖 **`EntityEcsLinkRegistry` + `Transform.position`**、`CombatHostility`、`**EntityDataComponent**`；P1 起与 **`SkillDefinition.CastRange`** 做交叉校验。
-
-### 3.5 `ICombatBoardTargetSync`（黑板 ↔ Mono，可选拆分静态类）
+### 3.5 `ICombatBoardTargetSync`
 
 | 方法 | 职责 |
 |------|------|
-| `TryGetPrimaryAttackTarget(EntityBase caster, out EntityBase target)` | `caster.BoundEcsEntity` → 读 **`CombatBoardLite.AttackTargetEntityId`** → `TryGetEntityBase` |
-| `SetPrimaryAttackTarget(EntityBase caster, long targetEcsId)` | 写己方 ECS **`AttackTargetEntityId`**（**需 `HasComponent`**） |
+| `TryGetPrimaryAttackTarget` | 读 `AttackTargetEntityId` → Registry |
+| `SetPrimaryAttackTarget` | 写 `AttackTargetEntityId`（需组件） |
 
-### 3.6 `SkillCastContext` 拼装约定（确认施法瞬间）
+MVP：**`CombatBoardTargetSync`** 静态类。
+
+### 3.6 `SkillCastContext` 拼装（技能分枝 · 闸门后）
 
 | 场景 | `PrimaryTarget` | `SecondaryTargets` |
 |------|-----------------|-------------------|
-| **单体技能** | **SuggestedPrimary 或 Hits[0]** | **清空** |
-| **纯 AoE（无主目标）** | **null** 或Caster（按表意图，须在 **SkillDefinition/README** 明示） | **Hits** |
-| **主目标 + 溅射（P2）** | 主单体 | **副列表**（`Acquire` 拆两次或单次返回主子结构） |
+| 单体技能 | `SuggestedPrimary` / `Hits[0]` | **清空** |
+| 纯 AoE | **null** / Caster（表规定） | **`Hits`** |
+| 主目标+溅射（P2） | 主 | 副列表 |
 
-**与黑板**：若本次为 **点选延续的单体技能**，在拼装前可先 **`TryGetPrimaryAttackTarget`**，把 **`PrimaryEntityIdHint`** 填入 Request；**AoE 仍不以黑板存列表**。
+点选延续：**`TryGetPrimaryAttackTarget`** → `PrimaryEntityIdHint`；**AoE 列表不入黑板**。
 
-### 3.7 `ICombatImpactDispatch`（普攻 / 瞬时物伤出站）
+### 3.7 `ICombatImpactDispatch`（普攻分枝 · 短路径）
 
 ```csharp
-public interface ICombatImpactDispatch
-{
-    /// <summary>单体普攻；内部 CreateImpactEvent，参数与 Tower Strike 对齐。</summary>
-    bool TryDispatchNormalAttack(EntityBase attacker, EntityBase victim, out string error);
-}
+bool TryDispatchNormalAttack(EntityBase attacker, out string error);
 ```
+
+仅读取攻击者 **`CombatBoardLiteComponent.AttackTargetEntityId`** 解析受害者；须经 **`MeleeStrikeRules`**（与索敌共用）；**Impact** 经由 **`EcsWorld.CombatImpacts`** 常驻实例。
+
+与塔 Strike 参数对齐（物伤 / `NormalAtk` / `Subtract` / `Hp`）。**若普攻改为一技能一步表**，本接口可由表驱动替代，**须在项目 README 冻结唯一主路径**。
 
 ---
 
 ## 4. MVP 阶段 — A+C 最小闭环
 
-**目标**：**一条**从「单体目标」到 **`ImpactSystem`** 的路径；选敌接口 **已实现 `PointEntity` + `NearestInSphere` 两样即可**。
+**目标**：统一骨架下 **`Acquire` → 普攻分枝 `Dispatch` → Impact**；形状 **PointEntity + NearestInSphere**。
 
-| 编号 | 交付物 | 脚本位置 / 类 | 说明 |
-|------|--------|-----------------|------|
-| M1 | **`DefaultTargetAcquisitionService`** | `Scripts/Gameplay/Combat/Targeting/DefaultTargetAcquisitionService.cs` | **`ITargetAcquisitionService`**：`NearestInSphere`、`PointEntity`。 |
-| M2 | **`DefaultCombatImpactDispatch`** | `Scripts/Gameplay/Combat/Targeting/DefaultCombatImpactDispatch.cs` | **`ICombatImpactDispatch`**：`AtkAD`、`Subtract`、`Physical`、`NormalAtk`。 |
-| M3 | **`MvpHeroBasicAttackDebugBridge`** | 同上目录 `MvpHeroBasicAttackDebugBridge.cs` | **`Space`**：`NearestInSphere`；**`Return`**：读黑板 `AttackTargetEntityId` 走 `PointEntity`。`attackCooldownSeconds` 节流。 |
-| M4 | **`CombatBoardRaySelectTarget`** | `CombatBoardRaySelectTarget.cs` | 左键射线点敌对单位 → **`CombatBoardTargetSync.SetPrimaryAttackTarget`**（需 **Collider**）。 |
-| — | 类型与接口 | `TargetingShapeKind`、`TargetAcquisitionRequest`、`TargetAcquisitionResult`、`ITargetAcquisitionService`、`ICombatImpactDispatch` | 同目录零散文件；**`CombatBoardTargetSync`** 静态黑板读写（可作为 P1 接口化前身）。 |
+| 编号 | 交付物 | 脚本位置 / 类 |
+|------|--------|----------------|
+| M1 | `DefaultTargetAcquisitionService` | `.../Targeting/DefaultTargetAcquisitionService.cs` |
+| M2 | `DefaultCombatImpactDispatch` | `.../DefaultCombatImpactDispatch.cs` |
+| M3 | `MvpHeroBasicAttackDebugBridge` | …（默认 **Space**：最近敌；**Return**：读黑板 Hint；以 Inspector `KeyCode` 为准） |
+| M4 | `CombatBoardRaySelectTarget` | **`LayerMask` + 射线**（默认掩码会去 **UI Layer**）；**`EventSystem` 上挡 UI**；需 **Collider** |
+| — | **共用组件** | `CombatTargetingRange`、`HostileTargetPicker`、`MeleeStrikeRules`、`HostileAcquisitionCombatBoardAlign` |
+| — | **常驻 Impact** | `EcsWorld.CombatImpacts`（与塔、野区共用 **`ImpactManager`**） |
+| — | 类型与契约 | `TargetingShapeKind`、`TargetAcquisition*`、`CombatBoardTargetSync`、`SetAttackAndThreatSameTarget` |
 
-**场景挂载**：英雄根挂 **`EntityBase` + `CombatEntitySpawnProfile`（含 CombatBoardLite）**；挂 **`MvpHeroBasicAttackDebugBridge`**（`attacker` 可留空则用本物体 **`EntityBase`**）；若需点选再上 **`CombatBoardRaySelectTarget`**（`controlledUnit` 同上）。敌对单位须有 **Collider + `EntityBase` + ECS 阵营**。
-
-**不包含（刻意推迟）**：`GroundCircle/Cone/Line`、 **`TryBeginCast` 串联 AoE**、前摇动画。
-
-**验收**：两单位敌对；普攻 **经 `Acquire` + `Dispatch`** → HP、`LastDamage`、击倒链条与塔一致；**黑板与 Context 在未施法流水线时可不同步**，但 **点选单体**场景下建议 **Hints 与棋盘一致以便答辩演示**。
-
----
-
-## 5. P1 阶段 — 拼装 Context + 单体技能并联
-
-**目标**：**玩家点选 → 黑板**；**确认技能 → `Acquire` → 填 Context → `TryBeginCast`**；普攻继续使用 **`ICombatImpactDispatch`** 或 **skillId=普攻** 二选一并文档锁定。
-
-| 编号 | 交付物 | 说明 |
-|------|--------|------|
-| P1 | **`ICombatBoardTargetSync`（正式接口 + 可多实现）** | MVP 已为静态 **`CombatBoardTargetSync`**；P1 可抽接口并接 **输入/UI**；补充死亡/失目标 **清零规则**。 |
-| P2 | **`SkillCastGate`（或同等 Facade）** | 单入口：`BeginSkillCast(skillId, optional override request)`：读表 **`RequiresTarget`** → 决定 Request 形态；**`Acquire` → 填 `SkillCastContext` → `TryBeginCast`**。 |
-| P3 | **`GroundCircle` 于 `ITargetAcquisitionService`** | **Request** 带落点+半径；**Hits → `SecondaryTargets`**；**`PrimaryTarget`** 按 §3.6 表。 |
-| P4 | **与 `CastRange` 校验** | 施法者到 **WorldOrigin**（或到主目标）距离 ≤ **`SkillDefinition.CastRange`**。 |
-| P5 | **`ICombatImpactDispatch` 与技能 Opcode** | 明确：**直接伤害** 走 Impact 的唯一入口清单（避免 Buff 与 Dispatch 双写）。 |
-
-**验收**：至少 **1 个单体技能** + **1 个圆形地面 AoE**（无 Cone/Line 亦可）；黑板 **仅主目标**；**范围命中仅 Context 列表**。
+**场景挂载**：`EntityBase` + **`CombatEntitySpawnProfile`（黑板）** + Debug 桥；敌 **Collider + EntityBase + 阵营**；点选场景中需有 **`EventSystem`**（可无 UI Canvas，仅占位射线 UI 拦截）。  
+**与 §2.7**：Debug 桥在 **Acquire 成功后 `SetAttackAndThreatSameTarget`** 再 **`TryDispatchNormalAttack(attacker)`**（Dispatch **只认黑板**）。  
+**验收**：敌对互殴、`LastDamage`、击倒可查。
 
 ---
 
-## 6. P2 阶段 — 几何补全、时间轴与演进位
+## 5. P1 阶段
 
-**目标**：可演示性、表驱动与 **B/D 方案可选演进**（不强制一次做完）。
-
-| 编号 | 交付物 | 说明 |
-|------|--------|------|
-| R1 | **Cone / Line** | 扩展 **`TargetingShapeKind`** 与 **`Acquire`** 实现。 |
-| R2 | **主目标 + 溅射** | `Acquire` 返回 **结构化主子** 或 **两次 Acquire**；表 **多步 Selector** 区分 Primary/Secondary。 |
-| R3 | **普攻时间轴** | Windup → HitFrame → Recovery；**HitFrame** 才 `Dispatch`。 |
-| R4 | **`SkillCastContext` 几何快照（方案 B 可选）** | 落点、形状枚举进 Context，**Hydrate** 与 **Acquire** 二选一为主路径。 |
-| R5 | **策略式 Resolver（方案 D 可选）** | JSON 步骤绑定解析策略，减少硬编码技能。 |
-| R6 | **Command / 预测占位（方案 E）** | 预览合法性与执行分离，作论文章节「扩展性」即可。 |
+**`SkillCastGate`**：`Acquire → Context → TryBeginCast`；**GroundCircle**；**CastRange**；黑板接口化、`Threat` 与 Opcodes 出站清单；与本节 **§2.3～2.7** **同一 Acquire 前缀**分叉到技能分枝。
 
 ---
 
-## 7. 端到端数据流
+## 6. P2 阶段
 
-### 7.1 单体普攻（A + C + MVP 主力）
+Cone/Line、主次溅射、**普攻 Timeline**（与塔类比）、Context 快照 B、Resolver D、Command E——均为 **§2.3** 执行层換件。
 
-```
-点选 / Nearest →（可选）SetPrimaryAttackTarget → AttackTargetEntityId
-确认普攻 → TargetAcquisitionRequest(PointEntity 或 NearestInSphere, Hint=board)
-        → ITargetAcquisitionService.Acquire
-        → ICombatImpactDispatch.TryDispatchNormalAttack(attacker, primaryHit)
-        → ImpactSystem → LastDamage / Vitality
-```
 
-### 7.2 技能（已有流水线 + A 注入）
+---
+
+## 7. 端到端对照（统一到 §2 图）
+
+### 7.1 分枝 A：普攻短路径（当前 MVP 主推）
 
 ```
-UI 几何 / 点选 → Request（P1+ 含 GroundCircle）
-        → Acquire → Hits
-        → 填 SkillCastContext.PrimaryTarget / SecondaryTargets（§3.6）
-        → SkillExecutionFacade.TryBeginCast
-        → DefaultTargetResolver → BuffApplyService / Opcode →（可能）CreateImpactEvent
+Acquire → （§2.7 Commit）→ TryDispatchNormalAttack → ImpactSystem → LastDamage / Vitality
 ```
+
+### 7.2 分枝 B：技能表驱动（已有 + P1 Gate）
+
+```
+Acquire → 填 SkillCastContext → TryBeginCast → Resolver → Pipeline → Opcode/Buff →（可选）Impact
+```
+
+两枝 **共用前两格**（输入意图 + Acquire），分叉在 **闸门之后的效果层**，与 **§2.2** 「配方不同」一致。
 
 ---
 
 ## 8. 与现有代码的映射
 
-| 模块 | 在 A+C 中的角色 |
-|------|-----------------|
-| `CombatBoardLiteComponent` | **C**：**仅** `AttackTargetEntityId`（+ `Threat…`） |
-| `SkillCastContext` | **C**：**本次** `PrimaryTarget` / `SecondaryTargets` |
-| `SkillCastPipelineSystem` | **不修改**步骤解析语义；消费已填好的 Context |
-| `DefaultTargetResolver` | **保持**；几何不进入 Resolver |
-| `ImpactManager` + `ImpactSystem` | 普攻与技能瞬时伤的 **统一结算出口** |
-| `CombatTargetAcquire` | 可 **被 `Acquire` 内部复用**（Nearest / 球心距离） |
-| `Gameplay.Combat.Targeting`（MVP） | **`DefaultTargetAcquisitionService`、`DefaultCombatImpactDispatch`**、黑板 **`CombatBoardTargetSync`**、Debug **`MvpHeroBasicAttackDebugBridge`** |
-| `TowerCombatCycleSystem` / `JungleAiSystem` | **不强制**走 `ITargetAcquisitionService`；若统一风格可逐步委托 |
+| 模块 | 角色 |
+|------|------|
+| `ImpactSystem` | 技能与普攻瞬时伤的 **汇合结算** |
+| `SkillCastPipelineSystem` | **技能分枝**执行层 |
+| `DefaultTargetResolver` | 消费 Context；几何不进 Resolver |
+| `CombatBoardLite` | **持续主目标**（职责 **§2.4**；与塔 Strike 对齐 **§2.7**） |
+| `Gameplay.Combat.Targeting` | **Picker + `MeleeStrikeRules`**；Dispatch **仅从黑板 Strike**；`HostileAcquisitionCombatBoardAlign`；点选 Layer（UI 过滤后续） |
+| `EcsWorld.CombatImpacts` | 塔 / 野区 / 普攻 / Buff opcode **`ImpactManager`**；**首次访问**时创建（非 ECS System） |
+| `TowerCombatCycleSystem` / `JungleAiSystem` | **`Initialize`** 绑定 **`CombatImpacts`** |
 
 ---
 
-## 9. 仓库现状清点（与定型方案的关系）
+## 9. 仓库现状清点
 
-- **已有**：`SkillCastContext` 列表、`SkillCastPipelineSystem`、`DefaultTargetResolver`。**MVP 已增**：命名空间 **`Gameplay.Combat.Targeting`** 下 **`ITargetAcquisitionService` / `DefaultTargetAcquisitionService`（PointEntity、Nearest）**、`ICombatImpactDispatch` / **`DefaultCombatImpactDispatch`**、`CombatBoardTargetSync`、`MvpHeroBasicAttackDebugBridge`、`CombatBoardRaySelectTarget`。  
-- **尚无**：GroundCircle/Cone/Line 几何、**`SkillCastGate`**、黑板 **正式接口封装**。
+技能管线 Context + Resolver 仍在。**英雄普攻 MVP**：已实现 **Acquire→黑板 Commit→Dispatch 读板**，与塔同构更近一步；**ImpactManager** 全工程经 **`EcsWorld.CombatImpacts`** / **`ImpactManager.Shared`**。**仍缺**：`SkillCastGate`、地面 AoE 几何。
 
 ---
 
 ## 10. 备选架构（简表）
 
-| 方案 | 要点 | 与 A+C 关系 |
-|------|------|-------------|
-| **B** | Context 内嵌 **几何快照 + Hydrate** | P2 可选，**替代** Request DTO 或与之并存 |
-| **D** | 可插拔 **`ITargetResolver` 策略** | P2 表驱动加深时使用 |
-| **E** | Command 预览/执行 | 论文扩展；与 A+C 正交 |
+| 方案 | 用途 |
+|------|------|
+| **B** | Context 内几何快照 + Hydrate |
+| **D** | Resolver 策略与 JSON 绑定 |
+| **E** | Command 预览/执行 |
 
-**全文主路径**：**A + C**（§2～§6）。
+均在 **§2.3** 骨架之外换「零件」，不推翻合并叙事。
 
 ---
 
@@ -240,8 +304,7 @@ UI 几何 / 点选 → Request（P1+ 含 GroundCircle）
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
-| 1.0 | 2026-04-17 | 初稿：英雄侧 Impact 缺口；MVP/P1/P2 粗粒度。 |
-| 1.1 | 2026-04-17 | §2.1：NPC/玩家与黑板。 |
-| 1.2 | 2026-04-17 | 仓库现状 + 方案 A～E 对比。 |
-| **2.0** | **2026-04-17** | **重构**：定型 **A+C**；新增 **§3 接口与数据契约**；**§4～§6** 按 A+C 重写 MVP/P1/P2；数据流与代码映射同步；备选方案缩为 §10。 |
-| 2.0.1 | 2026-04-17 | §4：**MVP 脚本落地**：`Gameplay.Combat.Targeting` 选敌、`DefaultCombatImpactDispatch`、`MvpHeroBasicAttackDebugBridge`、`CombatBoardRaySelectTarget`、`CombatBoardTargetSync`。 |
+| … | （v1～v2.0.x：A+C、MVP代码、黑板 Strike 对齐等，见历次提交） |
+| **3.0.0** | **2026-04-17** | **重构**：§2 统一战斗行动模型等（见前文）。 |
+| **3.0.1** | **2026-04-17** | Dispatch **仅从黑板**；**Picker/Rules/Range** 合并校验；点选 UI/Layer；**CombatImpacts**；`SetAttackAndThreatSameTarget`。 |
+| **3.0.2** | **2026-04-17** | **`CombatImpacts` 懒创建**；`BuffOpcodeDispatcher` 与 **`ImpactManager.Shared`** 对齐单例；点选暂不做 UI 拦截。 |

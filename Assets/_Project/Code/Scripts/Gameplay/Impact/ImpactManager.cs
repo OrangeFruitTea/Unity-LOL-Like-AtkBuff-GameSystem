@@ -6,6 +6,9 @@ namespace Core.Gameplay
     public class ImpactManager
     {
         private EcsWorld _world;
+
+        /// <summary>与 <see cref="EcsWorld.CombatImpacts"/> 同一实例，全工程唯一入口。</summary>
+        public static ImpactManager Shared => EcsWorld.Instance.CombatImpacts;
         
         public ImpactManager(EcsWorld world)
         {

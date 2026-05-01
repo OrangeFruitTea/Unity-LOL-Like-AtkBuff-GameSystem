@@ -17,7 +17,7 @@ namespace Core.Entity
 
         public void Initialize()
         {
-            _impacts = new ImpactManager(EcsWorld.Instance);
+            _impacts = EcsWorld.Instance.CombatImpacts;
         }
 
         public void Destroy()
