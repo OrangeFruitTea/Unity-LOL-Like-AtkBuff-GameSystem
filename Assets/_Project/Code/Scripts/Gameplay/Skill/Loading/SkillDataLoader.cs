@@ -1,6 +1,4 @@
-using System.IO;
-using Basement.Json;
-using Gameplay.Skill.Config;
+using Core.ECS;
 using UnityEngine;
 
 namespace Gameplay.Skill.Loading
@@ -31,30 +29,9 @@ namespace Gameplay.Skill.Loading
 
         public void Load()
         {
-            string full = Path.Combine(Application.streamingAssetsPath, _relativePath);
-            if (!File.Exists(full))
-            {
-                Debug.LogWarning($"[SkillDataLoader] 未找到技能表: {full}，使用空目录。");
-                SkillCatalog.ReplaceAll(System.Array.Empty<SkillDefinition>());
-                return;
-            }
-
-            if (JsonManager.Instance == null)
-            {
-                Debug.LogError("[SkillDataLoader] JsonManager 未初始化，无法解析技能表。");
-                return;
-            }
-
-            var result = JsonManager.Instance.DeserializeFromFilePath<SkillDataFileDto>(full, JsonSerializerProfile.GameContent);
-            if (!result.Success)
-            {
-                Debug.LogError($"[SkillDataLoader] 解析失败: {result.Error}");
-                return;
-            }
-
-            var dto = result.Value;
-            SkillCatalog.ReplaceAll(dto.Skills ?? System.Array.Empty<SkillDefinition>());
-            Debug.Log($"[SkillDataLoader] 已加载技能 {dto.Skills?.Count ?? 0} 条 (schema {dto.SchemaVersion})");
+            if (!EcsWorld.TryReloadSkillCatalogFromStreaming(_relativePath, out var err) &&
+                !string.IsNullOrEmpty(err))
+                Debug.LogWarning($"[SkillDataLoader] {err}");
         }
     }
 }

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace Gameplay.Skill.Config
 {
     /// <summary>
-    /// 技能定义只读目录（由 <see cref="Loading.SkillDataLoader"/> 或测试代码填充）。
+    /// 技能定义只读目录（由 <see cref="Loading.SkillDataLoader"/> 或 <see cref="Core.ECS.EcsWorld.TryReloadSkillCatalogFromStreaming"/> 填充）。
     /// </summary>
     public static class SkillCatalog
     {

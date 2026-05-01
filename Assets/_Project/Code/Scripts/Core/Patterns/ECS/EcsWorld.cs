@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Core.Entity;
 using Core.Combat;
@@ -9,6 +10,10 @@ using UnityEngine;
 using Core.Gameplay;
 using Basement.Runtime;
 using Basement.Utils;
+using Basement.Json;
+using Basement.Logging;
+using Gameplay.Skill.Config;
+using Gameplay.Skill.Loading;
 
 namespace Core.ECS
 {
@@ -109,6 +114,7 @@ namespace Core.ECS
         // 游戏启动时调用
         private void Initialize()
         {
+            WarmStreamingGameTablesEarly();
             EcsManager = new EcsEntityManager();
             AddEcsSystem(new EntitySpawnSystem());
             AddEcsSystem(new TowerCombatCycleSystem());
@@ -129,6 +135,80 @@ namespace Core.ECS
         protected void FixedUpdate()
         {
             BasementUnityPump.PumpFixedUpdate();
+        }
+
+        /// <summary>
+        /// World 就绪最前一刻：拉起 Json/Buff 宿主并灌入技能目录；场景里的 <see cref="SkillDataLoader"/> 仍可再次 <c>Load()</c> 覆盖。
+        /// </summary>
+        private static bool _streamingGameTablesWarmOnce;
+
+        private static void WarmStreamingGameTablesEarly()
+        {
+            _ = JsonManager.Instance;
+            _ = LogManager.Instance;
+
+            if (BuffDataLoader.Instance == null)
+            {
+                var go = new GameObject("[EcsWorld]BuffDataLoader");
+                go.AddComponent<BuffDataLoader>();
+            }
+
+            if (_streamingGameTablesWarmOnce)
+                return;
+            _streamingGameTablesWarmOnce = true;
+
+            if (!TryReloadSkillCatalogFromStreaming(SkillDataLoader.DefaultRelativePath, out var err) &&
+                !string.IsNullOrEmpty(err))
+                Debug.LogWarning($"[EcsWorld] {err}");
+        }
+
+        /// <summary>
+        /// 等价于 StreamingAssets JSON → <see cref="SkillCatalog"/>；供 <see cref="SkillDataLoader"/> 运行时重载共用。
+        /// </summary>
+        public static bool TryReloadSkillCatalogFromStreaming(string relativePath, out string error)
+        {
+            error = null;
+            if (string.IsNullOrEmpty(relativePath))
+                relativePath = SkillDataLoader.DefaultRelativePath;
+
+            string full = Path.Combine(Application.streamingAssetsPath, relativePath);
+            if (string.IsNullOrEmpty(full))
+            {
+                error = "invalid path";
+                SkillCatalog.ReplaceAll(Array.Empty<SkillDefinition>());
+                return false;
+            }
+
+            if (!File.Exists(full))
+            {
+                error = $"技能表不存在: {full}，SkillCatalog 置空。";
+                Debug.LogWarning($"[EcsWorld] {error}");
+                SkillCatalog.ReplaceAll(Array.Empty<SkillDefinition>());
+                return false;
+            }
+
+            _ = JsonManager.Instance;
+            if (JsonManager.Instance == null)
+            {
+                error = "JsonManager.Instance 不可用";
+                Debug.LogError($"[EcsWorld] {error}");
+                return false;
+            }
+
+            var result = JsonManager.Instance.DeserializeFromFilePath<SkillDataFileDto>(
+                full,
+                JsonSerializerProfile.GameContent);
+            if (!result.Success)
+            {
+                error = result.Error ?? "Deserialize failed";
+                Debug.LogError($"[EcsWorld] 技能表解析失败: {error}");
+                return false;
+            }
+
+            var dto = result.Value;
+            SkillCatalog.ReplaceAll(dto.Skills ?? Array.Empty<SkillDefinition>());
+            Debug.Log($"[EcsWorld] 已加载技能 {dto.Skills?.Count ?? 0} 条 (schema {dto.SchemaVersion})");
+            return true;
         }
 
         #region EcsManager

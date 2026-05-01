@@ -1,4 +1,57 @@
 {
   "schemaVersion": 1,
-  "skills": []
+  "skills": [
+    {
+      "skillId": 10001,
+      "displayName": "演示·瞬时魔伤",
+      "maxLevel": 1,
+      "cooldownSeconds": 1.5,
+      "requiresTarget": true,
+      "castRange": 12.0,
+      "steps": [
+        {
+          "stepId": "instant_magic",
+          "buffId": 90001,
+          "targetSelector": "PrimaryTarget",
+          "buffLevel": 1,
+          "triggerKind": "Immediate"
+        }
+      ]
+    },
+    {
+      "skillId": 10002,
+      "displayName": "演示·周期魔法DoT",
+      "maxLevel": 1,
+      "cooldownSeconds": 6.0,
+      "requiresTarget": true,
+      "castRange": 12.0,
+      "steps": [
+        {
+          "stepId": "periodic_magic_dot",
+          "buffId": 90002,
+          "targetSelector": "PrimaryTarget",
+          "buffLevel": 1,
+          "triggerKind": "Immediate",
+          "durationOverride": 5.0
+        }
+      ]
+    },
+    {
+      "skillId": 10003,
+      "displayName": "演示·自身瞬时伤(自闭环校验)",
+      "maxLevel": 1,
+      "cooldownSeconds": 0.5,
+      "requiresTarget": false,
+      "castRange": 0.0,
+      "steps": [
+        {
+          "stepId": "self_smoke",
+          "buffId": 90001,
+          "targetSelector": "Caster",
+          "buffLevel": 1,
+          "triggerKind": "Immediate"
+        }
+      ]
+    }
+  ]
 }

@@ -1,0 +1,36 @@
+[
+  {
+    "metadata": {
+      "name": "MVP瞬时魔法伤",
+      "desc": "与 BuffOpcodeMvpDefinitions 90001 对应； Opcode OnApply ImpactDamage",
+      "iconPath": "None"
+    },
+    "config": {
+      "id": 90001,
+      "type": "Debuff",
+      "resolution": "Separate",
+      "maxDuration": 0.35,
+      "frequency": 1.0,
+      "maxLevel": 99,
+      "demotion": 1,
+      "dispellable": true
+    }
+  },
+  {
+    "metadata": {
+      "name": "MVP周期魔法DoT",
+      "desc": "与 BuffOpcodeMvpDefinitions 90002 对应；仅周期 ImpactDamage",
+      "iconPath": "None"
+    },
+    "config": {
+      "id": 90002,
+      "type": "Debuff",
+      "resolution": "Separate",
+      "maxDuration": 6.0,
+      "frequency": 1.0,
+      "maxLevel": 99,
+      "demotion": 1,
+      "dispellable": true
+    }
+  }
+]
