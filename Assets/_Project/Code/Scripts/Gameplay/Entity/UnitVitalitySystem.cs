@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Core.ECS;
+using Gameplay.Entity;
 
 namespace Core.Entity
 {
@@ -44,7 +45,7 @@ namespace Core.Entity
                 }
 
                 if (_deathAnnounced.Add(ecs.Id))
-                    UnitDeathEventHub.Raise(ecs, board.KillerEntityId);
+                    CombatUnitDeathRelay.AnnounceFirstDeath(ecs, board.KillerEntityId);
             }
         }
     }
