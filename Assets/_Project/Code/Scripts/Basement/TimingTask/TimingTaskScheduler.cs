@@ -105,6 +105,9 @@ namespace Basement.Tasks
             _updateInterval = Math.Max(0.001f, interval);
         }
 
+        /// <summary> 当前调度更新间隔（秒），与 <see cref="SetUpdateInterval"/> 对应。 </summary>
+        public float UpdateInterval => _updateInterval;
+
         /// <summary>
         /// 获取活跃任务数量
         /// </summary>

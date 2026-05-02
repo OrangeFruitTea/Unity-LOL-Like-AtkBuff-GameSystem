@@ -206,7 +206,7 @@ namespace Core.ECS
             }
 
             var dto = result.Value;
-            SkillCatalog.ReplaceAll(dto.Skills ?? Array.Empty<SkillDefinition>());
+            SkillCatalog.ReplaceAll(dto.Skills != null ? dto.Skills : Enumerable.Empty<SkillDefinition>());
             Debug.Log($"[EcsWorld] 已加载技能 {dto.Skills?.Count ?? 0} 条 (schema {dto.SchemaVersion})");
             return true;
         }

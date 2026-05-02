@@ -1,5 +1,6 @@
 using Basement.Events;
 using Core.Entity;
+using Gameplay.Equipment;
 using Gameplay.Equipment.Config;
 using UnityEngine;
 

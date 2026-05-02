@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using Basement.Json;
 using Gameplay.Equipment.Config;
 using Gameplay.Shop;
@@ -67,7 +68,7 @@ namespace Gameplay.Equipment.Loading
             }
 
             var dto = result.Value;
-            EquipmentCatalog.ReplaceAll(dto.Items ?? System.Array.Empty<ItemConfigDefinition>());
+            EquipmentCatalog.ReplaceAll(dto.Items != null ? dto.Items : Enumerable.Empty<ItemConfigDefinition>());
             ShopCatalog.RebuildFrom(dto);
             CraftRecipeCatalog.RebuildFrom(dto?.CraftRecipes);
             EquipmentCatalog.ValidateLoadedData(_validateBuffDataAfterLoad, _validateBuffRegistryAfterLoad);

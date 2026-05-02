@@ -10,9 +10,12 @@ namespace Gameplay.Skill.Buff
     /// </summary>
     public static class BuffApplyService
     {
+        public static bool TryApply(BuffApplyRequest request, out string error) =>
+            TryApply(request, null, out error);
+
         public static bool TryApply(
             BuffApplyRequest request,
-            IReadOnlyList<IBuffApplicationModifier> modifiers = null,
+            IReadOnlyList<IBuffApplicationModifier> modifiers,
             out string error)
         {
             error = null;
@@ -77,7 +80,15 @@ namespace Gameplay.Skill.Buff
             EntityBase target,
             EntityBase provider,
             uint resolvedBuffLevel,
-            IReadOnlyList<IBuffApplicationModifier> modifiers = null,
+            out string error) =>
+            TryApplyStep(step, target, provider, resolvedBuffLevel, null, out error);
+
+        public static bool TryApplyStep(
+            BuffApplicationStepDefinition step,
+            EntityBase target,
+            EntityBase provider,
+            uint resolvedBuffLevel,
+            IReadOnlyList<IBuffApplicationModifier> modifiers,
             out string error)
         {
             var req = BuffApplyRequest.FromStep(step, target, provider, resolvedBuffLevel);

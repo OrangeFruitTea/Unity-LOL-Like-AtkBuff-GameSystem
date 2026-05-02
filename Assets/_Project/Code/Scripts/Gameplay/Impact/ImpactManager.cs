@@ -62,12 +62,11 @@ namespace Core.Gameplay
             // 确保目标实体有ImpactModifierComponent
             if (!target.HasComponent<ImpactModifierComponent>())
             {
-                var modifierComponent = new ImpactModifierComponent();
-                modifierComponent.InitializeDefaults();
-                target.AddComponent(modifierComponent);
+                var newComponent = new ImpactModifierComponent();
+                newComponent.InitializeDefaults();
+                target.AddComponent(newComponent);
             }
-            
-            // 添加修饰器
+
             var modifierComponent = target.GetComponent<ImpactModifierComponent>();
             modifierComponent.Modifiers.Add(modifier);
             target.SetComponent(modifierComponent);

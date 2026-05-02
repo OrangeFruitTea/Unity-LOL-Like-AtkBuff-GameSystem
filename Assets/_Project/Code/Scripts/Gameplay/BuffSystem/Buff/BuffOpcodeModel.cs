@@ -107,8 +107,8 @@ public sealed class FearMovementLockRecipe : BuffOpcodeRecipe
             },
             new BuffOpcodeInstruction
             {
-                Opcode = BuffEffectOpcode.StatModifyBonus,
-                ArgI0 = (int)EntityBaseData.MoveSpeed,
+                Opcode = BuffEffectOpcode.StatModifyCore,
+                ArgI0 = (int)EntityBaseDataCore.MoveSpeed,
                 ArgF0 = -MoveSpeedPenaltyPercent,
             }
         };
