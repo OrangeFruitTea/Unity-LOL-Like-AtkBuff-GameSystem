@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 namespace View.UnitModel
 {
@@ -20,9 +21,10 @@ namespace View.UnitModel
         [Tooltip("角色模型预制根（如 Kenney BlockyCharacters 的 character-x FBX）")]
         private GameObject modelPrefab;
 
+        [FormerlySerializedAs("animatorControllerOverride")]
         [SerializeField]
-        [Tooltip("非空时覆盖实例上的 Animator.runtimeAnimatorController")]
-        private RuntimeAnimatorController animatorControllerOverride;
+        [Tooltip("玩法用 Animator Controller（.controller 资产）。FBX 预制里的 Animator 通常不带 Controller，须在此指定；可与多个角色预制共用同一套 Controller。")]
+        private RuntimeAnimatorController animatorController;
 
         [SerializeField]
         [Tooltip("生成前清空锚点下现有子物体（避免重复 Awake 叠加）")]
@@ -76,17 +78,62 @@ namespace View.UnitModel
                     DestroyImmediate(modelAnchor.GetChild(i).gameObject);
             }
 
-            _spawnedModelRoot = Instantiate(modelPrefab, modelAnchor);
-            _spawnedModelRoot.name = modelPrefab.name;
-            _spawnedModelRoot.transform.localPosition = Vector3.zero;
-            _spawnedModelRoot.transform.localRotation = Quaternion.identity;
-            _spawnedModelRoot.transform.localScale = Vector3.one;
+            // 父物体 inactive 时，子物体 Awake 会延后到重新激活之后；这样可先挂上 Controller，再跑 Animator / 其它脚本的 Awake。
+            var anchorGo = modelAnchor.gameObject;
+            var anchorWasActive = anchorGo.activeSelf;
+            if (anchorWasActive)
+                anchorGo.SetActive(false);
 
-            if (animatorControllerOverride != null)
+            try
             {
-                var anim = _spawnedModelRoot.GetComponentInChildren<Animator>(true);
-                if (anim != null)
-                    anim.runtimeAnimatorController = animatorControllerOverride;
+                _spawnedModelRoot = Instantiate(modelPrefab, modelAnchor);
+                _spawnedModelRoot.name = modelPrefab.name;
+                _spawnedModelRoot.transform.localPosition = Vector3.zero;
+                _spawnedModelRoot.transform.localRotation = Quaternion.identity;
+                _spawnedModelRoot.transform.localScale = Vector3.one;
+
+                ApplyAnimatorController(_spawnedModelRoot);
+                WarnIfAnimatorsStillHaveNoController(_spawnedModelRoot);
+            }
+            finally
+            {
+                if (anchorWasActive)
+                    anchorGo.SetActive(true);
+            }
+        }
+
+        private void ApplyAnimatorController(GameObject modelRoot)
+        {
+            if (animatorController == null)
+                return;
+
+            var animators = modelRoot.GetComponentsInChildren<Animator>(true);
+            if (animators.Length == 0)
+                return;
+
+            foreach (var anim in animators)
+            {
+                anim.runtimeAnimatorController = animatorController;
+                anim.Rebind();
+                anim.Update(0f);
+            }
+        }
+
+        private void WarnIfAnimatorsStillHaveNoController(GameObject modelRoot)
+        {
+            if (modelRoot == null)
+                return;
+
+            foreach (var anim in modelRoot.GetComponentsInChildren<Animator>(true))
+            {
+                if (anim.runtimeAnimatorController != null)
+                    continue;
+
+                Debug.LogWarning(
+                    $"[{nameof(UnitModelAssembler)}] '{name}' 已实例化模型「{modelPrefab.name}」，但 Animator 仍无 Controller。" +
+                    $"请在 Inspector 的「{nameof(animatorController)}」槽拖入 .controller（FBX 导入预制默认不带 gameplay Controller）。",
+                    this);
+                return;
             }
         }
     }
