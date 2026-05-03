@@ -1919,6 +1919,7 @@ GameObject:
   - component: {fileID: 1105099373}
   - component: {fileID: 1105099374}
   - component: {fileID: 1105099375}
+  - component: {fileID: 1105099376}
   m_Layer: 0
   m_Name: BasementEntity
   m_TagString: Untagged
@@ -2037,6 +2038,22 @@ MonoBehaviour:
   Archetype: 0
   ConfigId: 1
   AddCombatBoardLite: 1
+--- !u!114 &1105099376
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1105099369}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8e9f0a1b2c35462839405162738495a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  modelAnchor: {fileID: 108868113}
+  modelPrefab: {fileID: 919132149155446097, guid: 47cba6ad8a6a1a241a1dc576966f9605, type: 3}
+  animatorControllerOverride: {fileID: 0}
+  clearModelChildrenBeforeSpawn: 1
 --- !u!1 &1212696663
 GameObject:
   m_ObjectHideFlags: 0
