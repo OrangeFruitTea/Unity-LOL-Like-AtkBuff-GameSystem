@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Core.ECS;
 using UnityEngine;
 using UnityEngine.UI;
 using Basement.Utils;
@@ -7,19 +8,18 @@ using Basement.Utils;
 namespace Core.UI
 {
     /// <summary>
-    /// 层级容器数据（每个层级包含独立Canvas和锚点容器）
+    /// 层级容器：一层一个 <see cref="Canvas"/> 根节点；不再为每种 <see cref="UIAnchorType"/> 创建子物体。
     /// </summary>
     public class UILayerContainer
     {
-        public GameObject LayerObject { get; set; }  // 层级根对象
-        public Canvas LayerCanvas { get; set; }      // 层级Canvas（控制渲染顺序）
-        public Dictionary<UIAnchorType, RectTransform> AnchorContainers { get; set; } // 该层级下的所有锚点
+        public GameObject LayerObject { get; set; }
+
+        public Canvas LayerCanvas { get; set; }
 
         public UILayerContainer(GameObject layerObj, Canvas canvas)
         {
             LayerObject = layerObj;
             LayerCanvas = canvas;
-            AnchorContainers = new Dictionary<UIAnchorType, RectTransform>();
         }
     }
 
@@ -31,13 +31,13 @@ namespace Core.UI
         private GameObject _uiRoot;  // 全局UI根节点
         private Dictionary<UILayerType, UILayerContainer> _layerContainers = new Dictionary<UILayerType, UILayerContainer>();
         private Dictionary<Guid, GameObject> _activeUiInstances = new Dictionary<Guid, GameObject>();
-        private Dictionary<Guid, UILayerType> _uiInstanceLayers = new Dictionary<Guid, UILayerType>(); // 记录UI实例所属层级
+        private Dictionary<Guid, UILayerType> _uiInstanceLayers = new Dictionary<Guid, UILayerType>();
+        private Dictionary<Guid, UIAnchorType> _uiInstanceAnchors = new Dictionary<Guid, UIAnchorType>();
 
         protected override void Awake()
         {
             base.Awake();
             InitializeUIRoot();
-            InitializeDefaultLayers();
         }
 
         /// <summary>
@@ -64,18 +64,7 @@ namespace Core.UI
         }
 
         /// <summary>
-        /// 初始化默认层级（按预设的UILayerType创建）
-        /// </summary>
-        private void InitializeDefaultLayers()
-        {
-            foreach (UILayerType layerType in Enum.GetValues(typeof(UILayerType)))
-            {
-                CreateLayer(layerType);
-            }
-        }
-
-        /// <summary>
-        /// 创建指定类型的层级（包含Canvas和锚点容器）
+        /// 创建指定类型的层级（Canvas 根）。界面实例直接挂在该根下，锚点仅作用于实例 <see cref="RectTransform"/>。
         /// </summary>
         private UILayerContainer CreateLayer(UILayerType layerType)
         {
@@ -104,28 +93,24 @@ namespace Core.UI
             // 4. 添加GraphicRaycaster（支持UI交互）
             layerObj.AddComponent<GraphicRaycaster>();
 
-            // 5. 为当前层级创建所有锚点容器
-            var layerContainer = new UILayerContainer(layerObj, canvas);
-            foreach (UIAnchorType anchorType in Enum.GetValues(typeof(UIAnchorType)))
-            {
-                var anchorObj = new GameObject($"Anchor_{anchorType}");
-                anchorObj.transform.SetParent(layerObj.transform);
-                var anchorRect = anchorObj.AddComponent<RectTransform>();
-                SetAnchorRectTransform(anchorRect, anchorType);
-                layerContainer.AnchorContainers[anchorType] = anchorRect;
-            }
+            var layerRect = layerObj.GetComponent<RectTransform>();
+            layerRect.anchorMin = Vector2.zero;
+            layerRect.anchorMax = Vector2.one;
+            layerRect.offsetMin = Vector2.zero;
+            layerRect.offsetMax = Vector2.zero;
 
+            var layerContainer = new UILayerContainer(layerObj, canvas);
             _layerContainers[layerType] = layerContainer;
             return layerContainer;
         }
 
         /// <summary>
-        /// 设置锚点容器的RectTransform（核心适配逻辑）
+        /// 按 <see cref="UIAnchorType"/> 设置实例 <see cref="RectTransform"/>（相对层级 Canvas 根的全屏区域）。
         /// </summary>
         private void SetAnchorRectTransform(RectTransform rect, UIAnchorType anchorType)
         {
             rect.sizeDelta = Vector2.zero;
-            rect.pivot = new Vector2(0.5f, 0.5f); // 锚点容器自身中心点为原点
+            rect.pivot = new Vector2(0.5f, 0.5f);
 
             switch (anchorType)
             {
@@ -204,18 +189,11 @@ namespace Core.UI
                     targetLayer = CreateLayer(element.LayerType);
                 }
 
-                // 3. 获取目标锚点容器
-                if (!targetLayer.AnchorContainers.TryGetValue(element.AnchorType, out var targetAnchor))
-                {
-                    Debug.LogError($"锚点 {element.AnchorType} 在层级 {element.LayerType} 中不存在");
-                    return false;
-                }
+                // 3. 挂在层级 Canvas 根下（每层单一容器，无 Anchor_* 子节点）
+                var uiInstance = Instantiate(prefab, targetLayer.LayerObject.transform);
+                uiInstance.name = $"{prefab.name}_{Guid.NewGuid().ToString().Substring(0, 8)}";
 
-                // 4. 实例化UI并设置父节点
-                var uiInstance = Instantiate(prefab, targetAnchor);
-                uiInstance.name = $"{prefab.name}_{Guid.NewGuid().ToString().Substring(0, 8)}"; // 避免重名
-
-                // 5. 适配位置和尺寸
+                // 4. 适配锚点与尺寸
                 var rectTransform = uiInstance.GetComponent<RectTransform>();
                 if (rectTransform != null)
                 {
@@ -230,17 +208,18 @@ namespace Core.UI
                     }
                 }
 
-                // 6. 处理跨场景保留
+                // 5. 处理跨场景保留
                 if (element.DontDestroyOnLoad)
                 {
                     DontDestroyOnLoad(uiInstance);
                 }
 
-                // 7. 更新元素状态
+                // 6. 更新元素状态
                 element.IsGenerated = true;
                 element.UiInstanceId = Guid.NewGuid();
                 _activeUiInstances[element.UiInstanceId] = uiInstance;
                 _uiInstanceLayers[element.UiInstanceId] = element.LayerType;
+                _uiInstanceAnchors[element.UiInstanceId] = element.AnchorType;
 
                 return true;
             }
@@ -248,6 +227,68 @@ namespace Core.UI
             {
                 Debug.LogError($"UI生成失败：{ex.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// <see cref="Resources.Load{T}(string)"/> 使用的路径（无扩展名）。对应 <c>Assets/_Project/Resources/UI/Widgets/Game/Statement/DetailStatement.prefab</c>。
+        /// </summary>
+        public const string DetailStatementResourcePath = "UI/Widgets/Game/Statement/DetailStatement";
+
+        /// <summary>
+        /// 生成局内属性详情预制体（DetailStatement）。需在工程中存在上述 Resources 资源。
+        /// </summary>
+        public bool TrySpawnDetailStatement(
+            out Guid instanceId,
+            out GameObject root,
+            UILayerType layerType = UILayerType.HUD,
+            UIAnchorType anchorType = UIAnchorType.BottomLeft,
+            Vector2 position = default,
+            Vector2 size = default,
+            bool dontDestroyOnLoad = false)
+        {
+            root = null;
+            var element = new UIElement();
+            element.SetDefaults();
+            element.PrefabPath = DetailStatementResourcePath;
+            element.LayerType = layerType;
+            element.AnchorType = anchorType;
+            element.Position = position;
+            element.Size = size;
+            element.DontDestroyOnLoad = dontDestroyOnLoad;
+
+            if (!GenerateUI(element))
+            {
+                instanceId = Guid.Empty;
+                Debug.LogError($"[UIManager] DetailStatement 生成失败（Resources 路径: {DetailStatementResourcePath}）。");
+                return false;
+            }
+
+            instanceId = element.UiInstanceId;
+            if (!_activeUiInstances.TryGetValue(instanceId, out root) || root == null)
+            {
+                instanceId = Guid.Empty;
+                Debug.LogError("[UIManager] GenerateUI 返回成功但未登记实例根物体。");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// 对子层级中所有 <see cref="IEntityBridgeBindable"/> 调用 <see cref="IEntityBridgeBindable.Bind"/>。
+        /// （Unity 的 <see cref="Component.GetComponentsInChildren{T}(bool)"/> 无法按接口类型查找，故遍历 <see cref="MonoBehaviour"/>。）
+        /// </summary>
+        public void BindEcsBridgeConsumers(GameObject uiRoot, EcsEntityBridge bridge)
+        {
+            if (uiRoot == null || bridge == null || !bridge.IsValid())
+                return;
+
+            var behaviours = uiRoot.GetComponentsInChildren<MonoBehaviour>(true);
+            foreach (var mb in behaviours)
+            {
+                if (mb is IEntityBridgeBindable bindable)
+                    bindable.Bind(bridge);
             }
         }
 
@@ -261,6 +302,7 @@ namespace Core.UI
                 Destroy(instance);
                 _activeUiInstances.Remove(uiInstanceId);
                 _uiInstanceLayers.Remove(uiInstanceId);
+                _uiInstanceAnchors.Remove(uiInstanceId);
             }
         }
 
@@ -289,22 +331,17 @@ namespace Core.UI
         /// </summary>
         public void ClearLayerAnchor(UILayerType layerType, UIAnchorType anchorType)
         {
-            if (!_layerContainers.TryGetValue(layerType, out var layer)) return;
-            if (!layer.AnchorContainers.TryGetValue(anchorType, out var anchor)) return;
-
             var instancesToRemove = new List<Guid>();
-            foreach (var (id, instance) in _activeUiInstances)
+            foreach (var (id, layer) in _uiInstanceLayers)
             {
-                if (instance.transform.parent == anchor)
-                {
+                if (layer != layerType)
+                    continue;
+                if (_uiInstanceAnchors.TryGetValue(id, out var a) && a == anchorType)
                     instancesToRemove.Add(id);
-                }
             }
 
             foreach (var id in instancesToRemove)
-            {
                 DestroyUI(id);
-            }
         }
 
         /// <summary>
@@ -334,6 +371,7 @@ namespace Core.UI
             }
             _activeUiInstances.Clear();
             _uiInstanceLayers.Clear();
+            _uiInstanceAnchors.Clear();
 
             if (_uiRoot != null)
             {

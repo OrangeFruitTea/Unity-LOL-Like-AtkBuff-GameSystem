@@ -1,17 +1,17 @@
 using System.Linq;
 using Core.ECS;
 using Core.Entity;
+using Core.UI;
 using TMPro;
 using UnityEngine;
 
 namespace Widgets.PlayerStatement
 {
-    public class DetailStatItemManager : MonoBehaviour
+    public class DetailStatItemManager : MonoBehaviour, IEntityBridgeBindable
     {
 
         #region staticEnum
 
-        private static int _coreCount;
         public static int AtkAD = 0;
         public static int AtkAP = 1;
         public static int DefAD = 2;
@@ -25,15 +25,32 @@ namespace Widgets.PlayerStatement
         public GameObject[] statItems;
         public EcsEntityBridge ecsBridge;
 
-        private bool IsValid()
+        private bool IsStatLayoutReady() =>
+            statItems != null
+            && statItems.Length > MoveSpeed
+            && statItems.All(obj => obj != null && obj.GetComponent<DetailStatItem>() != null);
+
+        /// <inheritdoc />
+        public void Bind(EcsEntityBridge bridge)
         {
-            return ecsBridge.IsValid()
-                    && statItems.All(obj => obj.GetComponent<DetailStatItem>() != null);
+            ecsBridge = bridge;
+            RefreshFromBridge();
         }
 
         private void Start()
         {
-            if (!IsValid()) throw Error.WidgetBoundErrorException;
+            if (IsStatLayoutReady() && ecsBridge != null && ecsBridge.IsValid())
+                RefreshFromBridge();
+        }
+
+        /// <summary> 从当前 <see cref="ecsBridge"/> 刷新数值（Inspector 预绑或 <see cref="Bind"/> 后调用）。 </summary>
+        public void RefreshFromBridge()
+        {
+            if (!IsStatLayoutReady())
+                return;
+            if (ecsBridge == null || !ecsBridge.IsValid())
+                return;
+
             var dataComponent = ecsBridge.GetComponent<EntityDataComponent>();
             SetValue(AtkAD, dataComponent.GetData(EntityBaseDataCore.AtkAD));
             SetValue(AtkAP, dataComponent.GetData(EntityBaseDataCore.AtkAP));

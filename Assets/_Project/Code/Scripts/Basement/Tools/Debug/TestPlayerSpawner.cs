@@ -1,5 +1,6 @@
 using System.Collections;
 using Core.ECS;
+using Core.UI;
 using UnityEngine;
 
 namespace Core.Entity
@@ -54,6 +55,28 @@ namespace Core.Entity
 
             spawnSystem.AddPendingEntity(instance);
             Debug.Log($"TestPlayer 实例已加入生成队列: {instance.gameObject.name}");
+
+            spawnSystem.FlushPendingEntitiesNow();
+
+            if (instance.entityBridge == null || !instance.entityBridge.IsValid())
+            {
+                Debug.LogError(
+                    "[TestPlayerSpawner] ECS 绑定失败：entityBridge 无效。检查 EcsWorld / EntitySpawnSystem，以及 EcsEntity.Id 是否为 0（首个实体 Id 不可为 0）。");
+                yield break;
+            }
+
+            var ui = UIManager.Instance;
+            if (ui == null)
+            {
+                Debug.LogError("[TestPlayerSpawner] UIManager.Instance 为空，无法生成 DetailStatement。");
+                yield break;
+            }
+
+            if (!ui.TrySpawnDetailStatement(out var hudId, out var root))
+                yield break;
+
+            Debug.Log($"[TestPlayerSpawner] DetailStatement 已生成 instanceId={hudId}, root={root.name}");
+            ui.BindEcsBridgeConsumers(root, instance.entityBridge);
         }
     }
 }

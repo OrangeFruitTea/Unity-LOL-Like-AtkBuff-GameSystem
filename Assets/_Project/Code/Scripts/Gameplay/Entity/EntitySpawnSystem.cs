@@ -30,6 +30,20 @@ namespace Core.Entity
             _pendingEntities.Clear();
         }
 
+        /// <summary>
+        /// 立即处理队列内所有待生成实体（与 <see cref="Update"/> 逻辑相同）。用于避免协程与 <see cref="EcsWorld.Update"/> 顺序导致的长时间等待。
+        /// </summary>
+        public void FlushPendingEntitiesNow()
+        {
+            while (_pendingEntities.Count > 0)
+            {
+                var sceneEntity = _pendingEntities.Dequeue();
+                SpawnEcsEntity(sceneEntity);
+            }
+
+            ProcessDestroyRequests();
+        }
+
         public void AddPendingEntity(EntityBase entity)
         {
             if (entity != null)
@@ -40,6 +54,13 @@ namespace Core.Entity
 
         private void SpawnEcsEntity(EntityBase sceneEntity)
         {
+            if (sceneEntity.entityBridge == null)
+            {
+                sceneEntity.entityBridge = sceneEntity.GetComponent<EcsEntityBridge>();
+                if (sceneEntity.entityBridge == null)
+                    sceneEntity.entityBridge = sceneEntity.gameObject.AddComponent<EcsEntityBridge>();
+            }
+
             var ecsEntity = EcsWorld.Instance.EcsManager.CreateEntity();
             sceneEntity.BoundEcsEntity = ecsEntity;
             sceneEntity.entityBridge.BoundEcsEntity = ecsEntity;

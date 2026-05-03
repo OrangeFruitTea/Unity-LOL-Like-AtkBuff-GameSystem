@@ -1,8 +1,17 @@
 using System;
+using Core.ECS;
 using UnityEngine;
 
 namespace Core.UI
 {
+    /// <summary>
+    /// 需运行时绑定 <see cref="EcsEntityBridge"/> 以读取 ECS 数据的 UI 组件（如 HUD）。
+    /// </summary>
+    public interface IEntityBridgeBindable
+    {
+        void Bind(EcsEntityBridge bridge);
+    }
+
     public class UIElement
     {
         public string PrefabPath;

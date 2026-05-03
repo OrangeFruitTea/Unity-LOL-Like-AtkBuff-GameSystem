@@ -6,7 +6,8 @@ namespace Core.ECS
 {
     public class EcsEntityManager
     {
-        private long _nextEntityId = 0;
+        /// <summary> 下一个实体 Id；从 1 起编，保留 0 表示「未绑定/默认」与 <see cref="EcsEntityBridge.IsValid"/> 一致。 </summary>
+        private long _nextEntityId = 1;
         // 实体-组件映射: 实体ID->组件类型->组件实例
         private Dictionary<long, Dictionary<Type, IEcsComponent>> _entityComponents = new();
         // 组件-实体映射: 组件类型->拥有该组件的所有实体ID列表
