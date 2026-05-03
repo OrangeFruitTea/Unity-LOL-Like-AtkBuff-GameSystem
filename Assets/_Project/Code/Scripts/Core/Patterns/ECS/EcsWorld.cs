@@ -2,10 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Core.Entity;
-using Core.Combat;
-using Core.Entity.Jungle;
-using Core.Entity.Minions;
+using System.Text;
 using UnityEngine;
 using Core.Gameplay;
 using Basement.Runtime;
@@ -49,6 +46,13 @@ namespace Core.ECS
         private readonly List<IEcsSystem> _systems = new List<IEcsSystem>();
         private readonly List<Action> _sortedUpdateDelegates = new List<Action>();
 
+        [Header("Runtime — ECS systems (Play Mode)")]
+        [Tooltip("当前注册的 IEcsSystem 数量（在 AddEcsSystem / RemoveEcsSystem 后刷新）。")]
+        [SerializeField] private int _inspectorRegisteredEcsSystemCount;
+
+        [Tooltip("按 UpdateOrder 排序的已注册系统一览（仅供检视）。")]
+        [SerializeField, TextArea(2, 14)] private string _inspectorEcsSystemsOrdered;
+
         protected EcsWorld()
         {
         }
@@ -67,6 +71,7 @@ namespace Core.ECS
             }
             _systems.Clear();
             _sortedUpdateDelegates.Clear();
+            RefreshInspectorEcsSystemsDisplay();
             _combatImpacts = null;
             base.OnDestroy();
         }
@@ -99,6 +104,7 @@ namespace Core.ECS
                 index++;
             _systems.Insert(index, system);
             _sortedUpdateDelegates.Insert(index, system.Update);
+            RefreshInspectorEcsSystemsDisplay();
         }
 
         public void RemoveEcsSystem(IEcsSystem system)
@@ -109,19 +115,41 @@ namespace Core.ECS
                 _systems.RemoveAt(index);
                 _sortedUpdateDelegates.RemoveAt(index);
                 system.Destroy();
+                RefreshInspectorEcsSystemsDisplay();
             }
         }
-        // 游戏启动时调用
+
+        /// <summary> 将当前系统列表写入 Inspector 可见字段（不在每帧调用）。 </summary>
+        private void RefreshInspectorEcsSystemsDisplay()
+        {
+            _inspectorRegisteredEcsSystemCount = _systems.Count;
+            if (_systems.Count == 0)
+            {
+                _inspectorEcsSystemsOrdered = "(none)";
+                return;
+            }
+
+            var sb = new StringBuilder(_systems.Count * 48);
+            for (var i = 0; i < _systems.Count; i++)
+            {
+                var sys = _systems[i];
+                if (i > 0)
+                    sb.Append('\n');
+                sb.Append(sys.GetType().Name);
+                sb.Append(" (UpdateOrder=");
+                sb.Append(sys.UpdateOrder);
+                sb.Append(')');
+            }
+
+            _inspectorEcsSystemsOrdered = sb.ToString();
+        }
+        /// <summary>
+        /// 宿主 Awake：表预热 + <see cref="EcsEntityManager"/>。各 <see cref="IEcsSystem"/> 由 <see cref="Gameplay.Runtime.GameplaySystemsBootstrap"/> 在 AfterSceneLoad 注册。
+        /// </summary>
         private void Initialize()
         {
             WarmStreamingGameTablesEarly();
             EcsManager = new EcsEntityManager();
-            AddEcsSystem(new EntitySpawnSystem());
-            AddEcsSystem(new TowerCombatCycleSystem());
-            AddEcsSystem(new ImpactSystem());
-            AddEcsSystem(new UnitVitalitySystem());
-            AddEcsSystem(new JungleAiSystem());
-            AddEcsSystem(new LaneMinionMoveSystem());
         }
 
         protected void Update()

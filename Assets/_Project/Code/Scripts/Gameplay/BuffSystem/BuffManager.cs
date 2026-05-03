@@ -14,6 +14,17 @@ public class BuffManager : MonoBehaviour
 
     public const int BuffCapacity = 25;
 
+    /// <summary>
+    /// 在首次创建 <see cref="BuffManager"/> <b>之前</b> 调用：关闭协程/<see cref="FixedUpdate"/> 内建泵，
+    /// 改由 <see cref="Gameplay.BuffSystem.Ecs.BuffTickEcsSystem"/> 驱动（与 <see cref="Gameplay.Runtime.GameplaySystemsBootstrap"/> 配对）。
+    /// </summary>
+    public static void EnableEcsDriving()
+    {
+        _ecsDrivingEnabled = true;
+    }
+
+    private static bool _ecsDrivingEnabled;
+
     #region Singleton
     private static BuffManager _instance;
     public static BuffManager Instance
@@ -259,98 +270,109 @@ public class BuffManager : MonoBehaviour
     
     // 协程部分
     private WaitForSeconds _waitForFixedDeltaTimeSeconds = new WaitForSeconds(FixedDeltaTime);
+
     private IEnumerator ExecuteFixedUpdate()
     {
         while (true)
         {
             yield return _waitForFixedDeltaTimeSeconds;
-            // 执行所有buff的update
-            foreach (var item1 in _buffDictionary)
-            {
-                foreach (BuffBase buff in item1.Value)
-                {
-                    if (buff.RuntimeData.CurrentLevel > 0 && buff.RuntimeData.Owner != null)
-                    {
-                        buff.FixedUpdate();
-                    }
-                }
-            }
+            PumpBuffPeriodicSteps();
         }
     }
 
     private WaitForSeconds _waitFor10Seconds = new WaitForSeconds(10f);
-    private Dictionary<EntityBase, List<BuffBase>> _buffDictionaryCopy = new Dictionary<EntityBase, List<BuffBase>>(25);
 
     private IEnumerator ExecuteGarbageCollection()
     {
         while (true)
         {
             yield return _waitFor10Seconds;
-            foreach (var item in _buffDictionary)
-            {
-                _buffDictionaryCopy.Add(item.Key, item.Value);
-            }
-            // 清理无用的buff对象
-            foreach (var item in _buffDictionaryCopy)
-            {
-                // 如果owner被删除，则让buff也同时删除
-                if (item.Key.Equals(null))
-                {
-                    _buffDictionary.Remove(item.Key);
-                    continue;
-                }
-                // 如果owner身上没有任何buff，也将其删除
-                if (item.Value.Count == 0)
-                {
-                    _buffDictionary.Remove(item.Key);
-                    continue;
-                }
-            }
+            PumpGarbageCollection();
         }
     }
 
     private void Awake()
     {
-        StartCoroutine(ExecuteFixedUpdate());
-        StartCoroutine(ExecuteGarbageCollection());
+        if (!_ecsDrivingEnabled)
+        {
+            StartCoroutine(ExecuteFixedUpdate());
+            StartCoroutine(ExecuteGarbageCollection());
+        }
     }
 
     private BuffBase _transferBuff;
 
-    private void FixedUpdate()
+    /// <summary> 每帧推进持续时间与降级（原 <see cref="FixedUpdate"/> 逻辑；ECS 模式下由 <see cref="Gameplay.BuffSystem.Ecs.BuffTickEcsSystem"/> 传入 <c>deltaTime</c>）。 </summary>
+    public void PumpDurationDecay(float dt)
     {
-        // 清理无用对象
-        foreach (var item in _buffDictionaryCopy)
+        if (_buffDictionary.Count == 0)
+            return;
+
+        var keys = new List<EntityBase>(_buffDictionary.Keys);
+        foreach (var key in keys)
         {
-            // 清理无用buff
-            // 降低持续时间
-            for (int i = item.Value.Count - 1; i >= 0; i--)
+            if (!_buffDictionary.TryGetValue(key, out var list) || list == null)
+                continue;
+
+            for (int i = list.Count - 1; i >= 0; i--)
             {
-                _transferBuff = item.Value[i];
-                // 若等级为0,则将其移除
+                _transferBuff = list[i];
                 if (_transferBuff.RuntimeData.CurrentLevel == 0)
                 {
-                    RemoveBuff(item.Key, _transferBuff);
+                    RemoveBuff(key, _transferBuff);
                     continue;
                 }
-                // 如果持续时间为0, 则降级
-                // 若降级后等级为0，则移除，否则刷新持续时间
+
                 if (_transferBuff.RuntimeData.ResidualDuration == 0)
                 {
                     _transferBuff.RuntimeData.CurrentLevel -= _transferBuff.Config.demotion;
                     if (_transferBuff.RuntimeData.CurrentLevel == 0)
                     {
-                        RemoveBuff(item.Key, _transferBuff);
+                        RemoveBuff(key, _transferBuff);
                         continue;
                     }
-                    else
-                    {
-                        _transferBuff.RuntimeData.ResidualDuration = _transferBuff.Config.maxDuration;
-                    }
+
+                    _transferBuff.RuntimeData.ResidualDuration = _transferBuff.Config.maxDuration;
                 }
-                // 降低持续时间
-                _transferBuff.RuntimeData.ResidualDuration -= Time.fixedDeltaTime;
-            } 
+
+                _transferBuff.RuntimeData.ResidualDuration -= dt;
+            }
         }
     }
+
+    /// <summary> 按 <see cref="FixedDeltaTime"/> 节拍调用各 Buff 的 <see cref="BuffBase.FixedUpdate"/>（原协程体）。 </summary>
+    public void PumpBuffPeriodicSteps()
+    {
+        foreach (var item1 in _buffDictionary)
+        {
+            foreach (BuffBase buff in item1.Value)
+            {
+                if (buff.RuntimeData.CurrentLevel > 0 && buff.RuntimeData.Owner != null)
+                    buff.FixedUpdate();
+            }
+        }
+    }
+
+    /// <summary> 清理失效宿主与空 Buff 列表（原 GC 协程；约 10s 一次由 ECS 或协程触发）。 </summary>
+    public void PumpGarbageCollection()
+    {
+        var removeKeys = new List<EntityBase>();
+        foreach (var kv in _buffDictionary)
+        {
+            if (kv.Key == null)
+                removeKeys.Add(kv.Key);
+            else if (kv.Value == null || kv.Value.Count == 0)
+                removeKeys.Add(kv.Key);
+        }
+
+        foreach (var k in removeKeys)
+            _buffDictionary.Remove(k);
+    }
+
+    private void FixedUpdate()
+    {
+        if (!_ecsDrivingEnabled)
+            PumpDurationDecay(Time.fixedDeltaTime);
+    }
 }
+

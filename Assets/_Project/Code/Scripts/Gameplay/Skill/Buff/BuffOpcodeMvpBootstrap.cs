@@ -3,7 +3,7 @@ using UnityEngine;
 namespace Gameplay.Skill.Buff
 {
     /// <summary>
-    /// 注册 MVP opcode Buff（<see cref="BuffOpcodeMvpDefinitions"/>）。与 <see cref="SkillSystemBootstrap"/> 同为 AfterSceneLoad。
+    /// 注册 MVP opcode Buff（<see cref="BuffOpcodeMvpDefinitions"/>）。与 <see cref="Gameplay.Runtime.GameplaySystemsBootstrap"/> 同为 AfterSceneLoad。
     /// </summary>
     public static class BuffOpcodeMvpBootstrap
     {
