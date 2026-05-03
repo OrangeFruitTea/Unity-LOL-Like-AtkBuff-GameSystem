@@ -1,3 +1,4 @@
+using Basement.Tools;
 using Core.ECS;
 using UnityEngine;
 
@@ -28,8 +29,9 @@ namespace Core.Entity.Spawn
             }
 
             var parent = spawnParent != null ? spawnParent : transform;
-            var instance = Instantiate(creepPrefab.gameObject, parent.position + localOffset, parent.rotation, parent)
-                .GetComponent<EntityBase>();
+            var spawned = Instantiate(creepPrefab.gameObject, parent.position + localOffset, parent.rotation);
+            TransformPlacementUtility.SetParentKeepWorldTransform(spawned.transform, parent);
+            var instance = spawned.GetComponent<EntityBase>();
 
             if (instance == null)
             {

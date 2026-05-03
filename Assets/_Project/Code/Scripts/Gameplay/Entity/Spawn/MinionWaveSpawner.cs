@@ -1,4 +1,5 @@
 using System.Collections;
+using Basement.Tools;
 using Core.Entity.Minions;
 using Core.ECS;
 using UnityEngine;
@@ -62,8 +63,9 @@ namespace Core.Entity.Spawn
             {
                 for (int i = 0; i < minionsPerWave; i++)
                 {
-                    var instance = Instantiate(minionPrefab.gameObject, parent.position + localOffset, parent.rotation, parent)
-                        .GetComponent<EntityBase>();
+                    var spawned = Instantiate(minionPrefab.gameObject, parent.position + localOffset, parent.rotation);
+                    TransformPlacementUtility.SetParentKeepWorldTransform(spawned.transform, parent);
+                    var instance = spawned.GetComponent<EntityBase>();
                     if (instance == null)
                     {
                         Debug.LogError("兵线 Prefab 根节点需带 EntityBase");

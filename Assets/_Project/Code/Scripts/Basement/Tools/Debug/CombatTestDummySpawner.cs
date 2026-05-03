@@ -48,12 +48,9 @@ namespace Core.Entity
             }
 
             var parent = spawnParent != null ? spawnParent : transform;
-            var instance = TransformWorldBindUtility.InstantiateWithWorldPoseThenParent(
-                    dummyPrefab.gameObject,
-                    parent.position + localOffset,
-                    parent.rotation,
-                    parent)
-                .GetComponent<EntityBase>();
+            var spawned = Instantiate(dummyPrefab.gameObject, parent.position + localOffset, parent.rotation);
+            TransformPlacementUtility.SetParentKeepWorldTransform(spawned.transform, parent);
+            var instance = spawned.GetComponent<EntityBase>();
 
             if (instance == null)
             {
