@@ -31,9 +31,9 @@ namespace Core.Combat
 
         private void Update(float deltaTime, EcsWorld world)
         {
-            // 从ECS世界中获取所有具有ImpactEventComponent的实体
-            var eventEntities = world.GetEntitiesWithComponent<ImpactEventComponent>();
-            
+            // 快照：处理过程中会 Destroy 事件实体，不能边遍历边改底层 component→entities 集合
+            var eventEntities = world.GetEntitiesWithComponent<ImpactEventComponent>().ToList();
+
             foreach (var eventEntity in eventEntities)
             {
                 var impactEvent = eventEntity.GetComponent<ImpactEventComponent>();

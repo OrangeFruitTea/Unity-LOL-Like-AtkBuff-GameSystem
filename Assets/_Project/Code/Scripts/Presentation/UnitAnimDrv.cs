@@ -21,6 +21,26 @@ namespace Gameplay.Presentation
         [SerializeField] private Rigidbody rigidBody;
         [SerializeField] private CharacterController characterController;
 
+        [Header("Locomotion blend (Animator Speed)")]
+        [Tooltip("与 Locomotion 1D Blend 阈值 0 / 0.1 / 1 对齐：将平面速度除以此值再 Clamp 到 0～1 写入 Animator。应 ≥ 本单位 NavMeshAgent.speed。")]
+        [SerializeField] private float locomotionMaxSpeedForAnimator = 4f;
+
+        [Tooltip("velocity 很小但仍有路径时，用 desiredVelocity 估计移动，减轻卡在 Idle 的概率。")]
+        [SerializeField] private bool useDesiredVelocityWhenNavVelocityLow = true;
+
+        [Tooltip("低于该平面速度视为静止，避免噪声。略大于 0 即可。")]
+        [SerializeField] private float navPlanarSpeedEpsilon = 0.02f;
+
+        [Header("Animator 驱动（Nav + 子物体 Animator）")]
+        [Tooltip("关闭 Root Motion，由 NavMeshAgent 驱动物体根位移，避免与导航抢 Transform 导致状态机异常。")]
+        [SerializeField] private bool animatorDisableRootMotion = true;
+
+        [Tooltip("避免移动时按渲染裁剪停止更新 Animator（子物体在 entity-model 下时尤其重要）。")]
+        [SerializeField] private bool animatorAlwaysAnimate = true;
+
+        [Tooltip("用根节点水平位移 / deltaTime 与 Nav/velocity 估计取较大值，应对 agent.velocity 长期为 0 等情况。")]
+        [SerializeField] private bool useMaxOfNavAndTransformPlanarSpeed = true;
+
         [Header("Animator param names")]
         [SerializeField] private string paramSpeed = "Speed";
         [SerializeField] private string paramIsDead = "IsDead";
@@ -59,12 +79,17 @@ namespace Gameplay.Presentation
 
         private Coroutine _strikeFallbackCo;
 
+        private Vector2 _lastRootPlanarPosition;
+        private bool _hasLastRootPlanarPosition;
+
         private void Awake()
         {
             if (entity == null)
                 entity = GetComponent<EntityBase>();
             if (animator == null)
-                animator = GetComponentInChildren<Animator>();
+                animator = GetComponentInChildren<Animator>(true);
+
+            ApplyAnimatorDriveSettings(animator);
 
             ResolveOptionalMotionRefs();
 
@@ -188,23 +213,98 @@ namespace Gameplay.Presentation
                 fx.OnHpDamagedShake();
         }
 
+        private void Start()
+        {
+            // UnitModelAssembler 等为 DefaultExecutionOrder 早于本脚本，但若此后仍有模型替换，延后一帧再绑一次 Animator。
+            StartCoroutine(ResolveAnimatorNextFrame());
+        }
+
+        private IEnumerator ResolveAnimatorNextFrame()
+        {
+            yield return null;
+            EnsureAnimatorReference();
+        }
+
         private void LateUpdate()
         {
+            EnsureAnimatorReference();
+
             if (_dead || animator == null)
                 return;
 
-            animator.SetFloat(_hashSpeed, ResolvePlanarSpeed());
+            animator.SetFloat(_hashSpeed, ResolveAnimatorSpeedParam());
 
             if (writeGrounded)
                 animator.SetBool(_hashGround, true);
         }
 
-        private float ResolvePlanarSpeed()
+        private void EnsureAnimatorReference()
+        {
+            if (animator != null && animator.gameObject.activeInHierarchy)
+                return;
+
+            animator = GetComponentInChildren<Animator>(true);
+            ApplyAnimatorDriveSettings(animator);
+        }
+
+        private void ApplyAnimatorDriveSettings(Animator anim)
+        {
+            if (anim == null)
+                return;
+
+            if (animatorDisableRootMotion)
+                anim.applyRootMotion = false;
+            if (animatorAlwaysAnimate)
+                anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+        }
+
+        /// <summary>0～1，与 Controller 里 Locomotion BlendTree 阈值一致。</summary>
+        private float ResolveAnimatorSpeedParam()
+        {
+            var planar = ResolvePlanarSpeedMetersPerSecond();
+            if (locomotionMaxSpeedForAnimator <= 1e-5f)
+                return 0f;
+            return Mathf.Clamp01(planar / locomotionMaxSpeedForAnimator);
+        }
+
+        private float ResolvePlanarSpeedMetersPerSecond()
+        {
+            float fromMotion = ResolvePlanarSpeedFromAgentOrPhysics();
+
+            if (!useMaxOfNavAndTransformPlanarSpeed)
+                return fromMotion;
+
+            var root = transform;
+            var p = root.position;
+            var planarNow = new Vector2(p.x, p.z);
+            float fromDelta = 0f;
+            if (_hasLastRootPlanarPosition && Time.deltaTime > 1e-5f)
+            {
+                fromDelta = (planarNow - _lastRootPlanarPosition).magnitude / Time.deltaTime;
+            }
+
+            _lastRootPlanarPosition = planarNow;
+            _hasLastRootPlanarPosition = true;
+
+            return Mathf.Max(fromMotion, fromDelta);
+        }
+
+        private float ResolvePlanarSpeedFromAgentOrPhysics()
         {
             if (navMeshAgent != null && navMeshAgent.isOnNavMesh)
             {
                 var v = navMeshAgent.velocity;
-                return Mathf.Sqrt(v.x * v.x + v.z * v.z);
+                var planar = Mathf.Sqrt(v.x * v.x + v.z * v.z);
+                if (useDesiredVelocityWhenNavVelocityLow &&
+                    planar < navPlanarSpeedEpsilon &&
+                    navMeshAgent.hasPath &&
+                    !navMeshAgent.isStopped)
+                {
+                    var d = navMeshAgent.desiredVelocity;
+                    planar = Mathf.Sqrt(d.x * d.x + d.z * d.z);
+                }
+
+                return planar;
             }
 
             if (rigidBody != null && !rigidBody.isKinematic)
