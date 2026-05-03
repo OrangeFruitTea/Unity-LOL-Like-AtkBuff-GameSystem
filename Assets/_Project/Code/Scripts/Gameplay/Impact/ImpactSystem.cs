@@ -204,8 +204,19 @@ namespace Core.Combat
             switch (impactEvent.TargetAttribute)
             {
                 case TargetAttribute.Hp:
+                {
+                    var hpBefore = targetData.GetData(EntityBaseDataCore.CrtHp);
                     ApplyHpChange(targetData, finalValue, impactEvent.OperationType);
+                    var hpAfter = targetData.GetData(EntityBaseDataCore.CrtHp);
+                    if (impactEvent.OperationType == ImpactOperationType.Subtract && finalValue > 0f)
+                    {
+                        Debug.Log(
+                            $"[ImpactSystem] HP 已扣 | targetEcs={targetEntity.Id} srcEcs={impactEvent.Source.Id} " +
+                            $"finalDmg={finalValue:F2} crit={impactEvent.IsCritical} | hp {hpBefore:F1} → {hpAfter:F1}");
+                    }
+
                     break;
+                }
                 case TargetAttribute.Mp:
                     ApplyMpChange(targetData, finalValue, impactEvent.OperationType);
                     break;

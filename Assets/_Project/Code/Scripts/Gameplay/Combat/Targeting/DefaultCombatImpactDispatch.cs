@@ -2,6 +2,7 @@ using Core.Combat;
 using Core.Entity;
 using Core.ECS;
 using Core.Gameplay;
+using UnityEngine;
 
 namespace Gameplay.Combat.Targeting
 {
@@ -50,6 +51,10 @@ namespace Gameplay.Combat.Targeting
                 ImpactOperationType.Subtract,
                 ImpactType.Physical,
                 ImpactSourceType.NormalAtk);
+
+            Debug.Log(
+                $"[DefaultCombatImpactDispatch] CreateImpact NormalAtk | src={attacker.name} ecs={attacker.BoundEcsEntity.Id} " +
+                $"→ dst={victim.name} ecs={victim.BoundEcsEntity.Id} rawAtk={(float)raw:F1} (由 ImpactSystem 帧结算实际扣血)");
 
             return true;
         }

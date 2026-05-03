@@ -1,4 +1,5 @@
 using System.Collections;
+using Basement.Tools;
 using Core.ECS;
 using UnityEngine;
 
@@ -47,7 +48,11 @@ namespace Core.Entity
             }
 
             var parent = spawnParent != null ? spawnParent : transform;
-            var instance = Instantiate(dummyPrefab.gameObject, parent.position + localOffset, parent.rotation, parent)
+            var instance = TransformWorldBindUtility.InstantiateWithWorldPoseThenParent(
+                    dummyPrefab.gameObject,
+                    parent.position + localOffset,
+                    parent.rotation,
+                    parent)
                 .GetComponent<EntityBase>();
 
             if (instance == null)

@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using Basement.Tools;
 using Core.ECS;
 using Core.UI;
 using UnityEngine;
@@ -15,6 +17,12 @@ namespace Core.Entity
     /// </summary>
     public class TestPlayerSpawner : EntityBase
     {
+        /// <summary>最近一次 ECS 绑定成功的测试玩家根 <see cref="Transform"/>（用于相机等在 Inspector 未绑定时自动对齐）。</summary>
+        public static Transform LastSpawnedPlayerRoot { get; private set; }
+
+        /// <summary>在 <see cref="FlushPendingEntitiesNow"/> 且 <c>entityBridge</c> 有效后触发；早于 UI/HUD 绑定。</summary>
+        public static event Action<Transform> TestPlayerSpawned;
+
         [SerializeField] private EntityBase testPlayerPrefab;
         [SerializeField] private Transform spawnParent;
         [SerializeField] private Vector3 localOffset;
@@ -44,7 +52,11 @@ namespace Core.Entity
             }
 
             var parent = spawnParent != null ? spawnParent : transform;
-            var instance = Instantiate(testPlayerPrefab.gameObject, parent.position + localOffset, parent.rotation, parent)
+            var instance = TransformWorldBindUtility.InstantiateWithWorldPoseThenParent(
+                    testPlayerPrefab.gameObject,
+                    parent.position + localOffset,
+                    parent.rotation,
+                    parent)
                 .GetComponent<EntityBase>();
 
             if (instance == null)
@@ -64,6 +76,9 @@ namespace Core.Entity
                     "[TestPlayerSpawner] ECS 绑定失败：entityBridge 无效。检查 EcsWorld / EntitySpawnSystem，以及 EcsEntity.Id 是否为 0（首个实体 Id 不可为 0）。");
                 yield break;
             }
+
+            LastSpawnedPlayerRoot = instance.transform;
+            TestPlayerSpawned?.Invoke(instance.transform);
 
             var ui = UIManager.Instance;
             if (ui == null)

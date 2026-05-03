@@ -40,6 +40,9 @@ namespace Gameplay.Presentation
 
         [SerializeField] private MonoBehaviour hpBarFxHost;
 
+        [Header("Debug")]
+        [SerializeField] private bool logCombatPipeline = true;
+
         private readonly ICombatImpactDispatch _defaultDispatch = new DefaultCombatImpactDispatch();
 
         private ICombatImpactDispatch _activeStrikeDispatch;
@@ -103,7 +106,11 @@ namespace Gameplay.Presentation
         public void BeginNormalAttackSwing(ICombatImpactDispatch dispatch = null)
         {
             if (_dead || animator == null)
+            {
+                if (logCombatPipeline)
+                    Debug.Log($"[UnitAnimDrv] BeginNormalAttackSwing 跳过: dead={_dead} animatorNull={animator == null} ({name})");
                 return;
+            }
 
             StopStrikeFallbackCoroutine();
 
@@ -111,6 +118,12 @@ namespace Gameplay.Presentation
             _strikeArmed = true;
 
             animator.SetTrigger(_hashAttack);
+
+            if (logCombatPipeline)
+            {
+                var fb = strikeFallbackDelaySeconds >= 0f ? $"{strikeFallbackDelaySeconds:F2}s 后 Fallback 出伤" : "无 Fallback（须 Attack clip 上 AnimEvt_Strike）";
+                Debug.Log($"[UnitAnimDrv] Attack Trigger 已发 | {name} ecs={entity.BoundEcsEntity.Id} | {fb}");
+            }
 
             if (strikeFallbackDelaySeconds >= 0f && isActiveAndEnabled)
                 _strikeFallbackCo = StartCoroutine(StrikeFallbackCoroutine(strikeFallbackDelaySeconds));
@@ -131,12 +144,27 @@ namespace Gameplay.Presentation
             StopStrikeFallbackCoroutine();
 
             if (!_strikeArmed || entity == null || _dead || animator == null)
+            {
+                if (logCombatPipeline && entity != null)
+                    Debug.Log(
+                        $"[UnitAnimDrv] TryStrikeOnceInternal 跳过 armed={_strikeArmed} dead={_dead} animatorNull={animator == null} ({name})");
                 return;
+            }
 
             _strikeArmed = false;
 
+            if (logCombatPipeline)
+                Debug.Log($"[UnitAnimDrv] ▶ AnimEvt_Strike / Fallback → TryDispatchNormalAttack | {name}");
+
             if (!_activeStrikeDispatch.TryDispatchNormalAttack(entity, out var err))
-                Debug.Log($"[UnitAnimDrv] strike dispatch failed: {err}");
+            {
+                Debug.Log($"[UnitAnimDrv] ✖ strike dispatch failed: {err}");
+                _activeStrikeDispatch = _defaultDispatch;
+                return;
+            }
+
+            if (logCombatPipeline)
+                Debug.Log($"[UnitAnimDrv] ✓ TryDispatchNormalAttack 成功（待 ImpactSystem 结算 HP）| {name}");
 
             _activeStrikeDispatch = _defaultDispatch;
         }

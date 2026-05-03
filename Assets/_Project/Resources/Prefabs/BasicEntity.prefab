@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 8568759599105471297}
   - component: {fileID: 4481537736778524732}
   - component: {fileID: 8409604478084145947}
+  - component: {fileID: 5024367120157957509}
   m_Layer: 0
   m_Name: BasicEntity
   m_TagString: Untagged
@@ -150,6 +151,23 @@ MonoBehaviour:
   modelPrefab: {fileID: 919132149155446097, guid: 47cba6ad8a6a1a241a1dc576966f9605, type: 3}
   animatorController: {fileID: 9100000, guid: 2f3c464ff0d6f19408a1cc970e21a873, type: 2}
   clearModelChildrenBeforeSpawn: 1
+--- !u!114 &5024367120157957509
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6890991949751230397}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5c474fd9cae3e2749964d40ca0b96329, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  attacker: {fileID: 8568759599105471297}
+  attackNearestKey: 32
+  attackBoardHintKey: 13
+  attackCooldownSeconds: 0.35
+  logCombatPipeline: 1
 --- !u!1 &8370901353188155453
 GameObject:
   m_ObjectHideFlags: 0

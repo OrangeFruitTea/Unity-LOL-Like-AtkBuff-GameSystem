@@ -14,6 +14,9 @@ namespace Gameplay.Combat.Targeting
         [SerializeField] private KeyCode attackBoardHintKey = KeyCode.Return;
         [SerializeField] private float attackCooldownSeconds = 0.35f;
 
+        [Header("Debug")]
+        [SerializeField] private bool logCombatPipeline = true;
+
         private ITargetAcquisitionService _acquisition;
         private ICombatImpactDispatch _dispatch;
         private float _nextSwingTime;
@@ -41,6 +44,10 @@ namespace Gameplay.Combat.Targeting
 
         private void TrySwingNearest()
         {
+            if (logCombatPipeline)
+                Debug.Log(
+                    $"[MvpHeroBasicAttack] ▶ Key={attackNearestKey} NearestHostile | attacker={attacker.name} ecs={attacker.BoundEcsEntity.Id}");
+
             var req = new TargetAcquisitionRequest(TargetingShapeKind.NearestInSphere, attacker, rangeOrRadius: 0f);
             var result = _acquisition.Acquire(req);
             AfterAcquireCommitAndDispatch(result);
@@ -49,6 +56,9 @@ namespace Gameplay.Combat.Targeting
         private void TrySwingBoardHint()
         {
             long hint = ReadBoardAttackHint(attacker);
+            if (logCombatPipeline)
+                Debug.Log($"[MvpHeroBasicAttack] ▶ Key={attackBoardHintKey} BoardHint id={hint} | attacker={attacker.name}");
+
             var req = new TargetAcquisitionRequest(TargetingShapeKind.PointEntity, attacker, hint, rangeOrRadius: 0f);
             var result = _acquisition.Acquire(req);
             AfterAcquireCommitAndDispatch(result);
@@ -59,13 +69,15 @@ namespace Gameplay.Combat.Targeting
         {
             if (!result.Succeeded)
             {
-                Debug.Log($"[MvpHeroBasicAttack] acquire failed: {result.Error}");
+                if (logCombatPipeline)
+                    Debug.Log($"[MvpHeroBasicAttack] ✖ acquire failed: {result.Error}");
                 return;
             }
 
             if (result.Hits.Count < 1)
             {
-                Debug.Log("[MvpHeroBasicAttack] acquire ok but Hits empty");
+                if (logCombatPipeline)
+                    Debug.Log("[MvpHeroBasicAttack] ✖ acquire ok but Hits empty");
                 return;
             }
 
@@ -73,9 +85,14 @@ namespace Gameplay.Combat.Targeting
             long id = vic.BoundEcsEntity.Id;
             if (id == 0)
             {
-                Debug.Log("[MvpHeroBasicAttack] victim has no ecs id");
+                if (logCombatPipeline)
+                    Debug.Log("[MvpHeroBasicAttack] ✖ victim has no ecs id");
                 return;
             }
+
+            if (logCombatPipeline)
+                Debug.Log(
+                    $"[MvpHeroBasicAttack] ✓ target={vic.name} victimEcs={id} | commit CombatBoard → swing/dispatch");
 
             if (!CombatBoardTargetSync.SetAttackAndThreatSameTarget(attacker, id))
             {
@@ -90,12 +107,15 @@ namespace Gameplay.Combat.Targeting
             }
             else if (!_dispatch.TryDispatchNormalAttack(attacker, out var err))
             {
-                Debug.Log($"[MvpHeroBasicAttack] dispatch failed: {err}");
+                if (logCombatPipeline)
+                    Debug.Log($"[MvpHeroBasicAttack] ✖ dispatch failed: {err}");
                 return;
             }
 
             _nextSwingTime = Time.time + attackCooldownSeconds;
-            Debug.Log($"[MvpHeroBasicAttack] {(anim != null ? "swing queued (AnimEvt_Strike / fallback)" : "dispatched")} → board id={id}");
+            if (logCombatPipeline)
+                Debug.Log(
+                    $"[MvpHeroBasicAttack] ✓ {(anim != null ? "swing queued (等 AnimEvt_Strike 或 Fallback 出伤)" : "已直接 DispatchImpact")} | victimEcs={id}");
         }
 
         private static long ReadBoardAttackHint(EntityBase caster)
