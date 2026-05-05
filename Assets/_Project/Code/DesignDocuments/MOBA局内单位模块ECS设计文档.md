@@ -25,7 +25,7 @@
 ### 1.2 读者对象
 
 - Gameplay / 客户端逻辑；
-- 与关卡、兵线、野区策划对接的研发。
+- 负责 **关卡兵线／野区波次与时间线等与外置配置耦合**的实现读者。
 
 ### 1.3 术语
 
@@ -143,7 +143,7 @@ public enum UnitArchetype : byte
 
 **已移除**：不在此组件重复 **`AttackTargetEntityId`**；**攻击 / 瞄准唯一读 `CombatBoardLiteComponent.AttackTargetEntityId`**（与同实体上的 `TowerCombatCycle` 共存）。
 
-`TowerCombatPhase` 枚举值与是否合并 **Warning+Lock** 由实现定稿，但 **文档层面**保留 **预警 / 锁定 / 攻击帧 / 冷却** 四类语义便于策划填表。
+`TowerCombatPhase` 枚举值与是否合并 **Warning+Lock** 由实现定稿，但 **文档层面**保留 **预警 / 锁定 / 攻击帧 / 冷却** 四类语义，**便于在外置表里分别配置各阶段时长等相关字段**。
 
 **不配移动组件**：塔仍无路径/velocity；**Transform** 只做旋转炮台；**射线/炮口指向** 由表现层读 **`CombatBoardLite`** + `EntityEcsLinkRegistry` 解析 **目标世界位置**。
 

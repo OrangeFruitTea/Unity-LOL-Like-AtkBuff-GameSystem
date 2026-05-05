@@ -5,7 +5,7 @@
 本文档在现有 **`BuffSystem`**（`Assets/_Project/Code/Scripts/Gameplay/BuffSystem`）与 **`Core.ECS`**（`Assets/_Project/Code/Scripts/Core/Patterns/ECS`）之上，定义一套**技能（Skill）模块**的架构与数据契约。设计约束如下：
 
 - **技能的一切“效果”均落实为对目标的 Buff 施加**（调用与 `BuffManager.AddBuff` 等价的施加语义），不另建平行“效果执行器”树；数值、控制、链式触发等继续由具体 `BuffBase` 子类与 `BuffConfig` / `BuffRuntimeData` 表达。
-- **技能效果可装配、可修改**：同一技能在配置层由有序/有分支的 **Buff 施加步骤（Buff Application Step）** 组成；运行时支持等级、表驱动参数、可选修饰器（如统一缩放持续时间、改写目标集合），便于策划配置与程序扩展。
+- **技能效果可装配、可修改**：同一技能在配置层由有序/有分支的 **Buff 施加步骤（Buff Application Step）** 组成；运行时支持等级、表驱动参数、可选修饰器（如统一缩放持续时间、改写目标集合），**便于仅改外置配置完成装配**，并保留 **C# 侧扩展钩子**。
 - **施加时序**：支持**同一时刻并行施加**多条 Buff，也支持**延迟**（固定秒数、时间轴锚点）与**条件满足后**再施加后续 Buff；条件既可来自 ECS 组件状态，也可来自游戏事件（与 `Basement` 事件/任务模块协作）。
 - 运行环境：**Unity 2022**；实体侧延续 **`EntityBase` + `EcsEntityBridge` + `EcsEntity`** 的既有桥接方式（见 `EntitySpawnSystem`）。
 
@@ -173,7 +173,7 @@
 
 ### 7.1 配置层装配
 
-- 策划编辑 **有序步骤表** + **并行组** + **触发器** 即完成技能装配。
+- 在 **`SkillData`/JSON（或等价外置步骤表）里维护** **有序步骤** + **并行组** + **触发器**，即可完成对技能的装配。
 - Buff 本身仍由 `BuffData.json`（或等价）维护；技能只引用 id。
 
 ### 7.2 运行时修改（扩展点）

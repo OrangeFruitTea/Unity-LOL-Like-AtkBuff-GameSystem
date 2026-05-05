@@ -12,7 +12,7 @@
 
 **Opcode（Operation Code，操作码）** 在本设计中指：**用一个可序列化的代号（枚举整型或短字符串）表示一类「可对单位做的原子动作」**，配套 **固定形状的参数字段**（如伤害基数、持续时间、位移向量 id）。运行时由一个 **小而稳定的解释器（Dispatcher）** 根据 opcode 分发到已有子系统（如 `ImpactManager`、属性修改、`BuffManager` 再入等）。
 
-它解决的是：**少写成百上千个 `BuffBase` 子类**，而把差异留在 **表里**（JSON、ScriptableObject、策划表）。
+它解决的是：**少写成百上千个 `BuffBase` 子类**，而把差异留在 **表里**（JSON、ScriptableObject、**等价外置表项**）。
 
 ---
 
