@@ -1,9 +1,11 @@
 using System;
 using System.Collections;
 using Basement.Tools;
+using Core.CameraSystem;
 using Core.ECS;
 using Core.UI;
 using UnityEngine;
+using Widgets.PlayerStatement;
 
 namespace Core.Entity
 {
@@ -26,6 +28,11 @@ namespace Core.Entity
         [SerializeField] private EntityBase testPlayerPrefab;
         [SerializeField] private Transform spawnParent;
         [SerializeField] private Vector3 localOffset;
+
+        [Tooltip(
+            "若为 true：玩家 ECS 就绪后动态创建带 CameraController 的相机并设为 MainCamera；场景中旧 MainCamera 会被停用并取消 Tag（见 PlayerFollowCameraSpawner）。")]
+        [SerializeField]
+        private bool spawnDedicatedFollowCamera = true;
 
         private bool _isTestPlayerPrefabNull;
 
@@ -74,21 +81,35 @@ namespace Core.Entity
                 yield break;
             }
 
+            if (spawnDedicatedFollowCamera)
+                PlayerFollowCameraSpawner.CreateForPlayer(instance.transform);
+
             LastSpawnedPlayerRoot = instance.transform;
             TestPlayerSpawned?.Invoke(instance.transform);
 
             var ui = UIManager.Instance;
             if (ui == null)
             {
-                Debug.LogError("[TestPlayerSpawner] UIManager.Instance 为空，无法生成 DetailStatement。");
+                Debug.LogError("[TestPlayerSpawner] UIManager.Instance 为空，无法生成 StatementWidget。");
                 yield break;
             }
 
-            if (!ui.TrySpawnDetailStatement(out var hudId, out var root))
+            if (!ui.TrySpawnStatementWidget(out var hudId, out var root))
                 yield break;
 
-            Debug.Log($"[TestPlayerSpawner] DetailStatement 已生成 instanceId={hudId}, root={root.name}");
-            ui.BindEcsBridgeConsumers(root, instance.entityBridge);
+            Debug.Log($"[TestPlayerSpawner] StatementWidget 已生成 instanceId={hudId}, root={root.name}");
+
+            var bridge = instance.entityBridge;
+            var statementWidget = root.GetComponent<StatementWidget>()
+                                 ?? root.GetComponentInChildren<StatementWidget>(true);
+            if (statementWidget == null)
+            {
+                Debug.LogError(
+                    $"[TestPlayerSpawner] 生成的 HUD 根节点上缺少 {nameof(StatementWidget)}，无法绑定玩家 ECS。（root={root.name}）");
+                yield break;
+            }
+
+            statementWidget.Bind(bridge);
         }
     }
 }

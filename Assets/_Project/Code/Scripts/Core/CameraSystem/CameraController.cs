@@ -32,6 +32,11 @@ public class CameraController : MonoBehaviour
         if (!autoBindTestPlayerWhenPlayerEmpty)
             return;
 
+        SubscribeTestPlayerSpawnedIfNeeded();
+    }
+
+    private void SubscribeTestPlayerSpawnedIfNeeded()
+    {
         TestPlayerSpawner.TestPlayerSpawned += OnTestPlayerSpawned;
         if (player == null && TestPlayerSpawner.LastSpawnedPlayerRoot != null)
             BindPlayer(TestPlayerSpawner.LastSpawnedPlayerRoot);
@@ -65,6 +70,35 @@ public class CameraController : MonoBehaviour
         player = spawnedRoot;
         ApplyAutoBindInitialFraming();
         Debug.Log($"[CameraController] 已自动绑定并取景: {spawnedRoot.name}（TestPlayerSpawner）。");
+    }
+
+    /// <summary>
+    /// 动态生成的跟随相机在 <b>未激活</b> 的根物体上装配时调用：关闭对 <see cref="TestPlayerSpawner"/> 的自动订阅，
+    /// 直接绑定角色并完成一次性取景。<see cref="PlayerFollowCameraSpawner"/>。
+    /// </summary>
+    public void InitializeForDedicatedPlayerFollow(Transform followRoot)
+    {
+        autoBindTestPlayerWhenPlayerEmpty = false;
+        player = followRoot;
+        if (followRoot != null)
+            ApplyAutoBindInitialFraming();
+    }
+
+    /// <summary>场景中已有相机但未用 Spawner：可运行时改跟随时调用。</summary>
+    public void BindToPlayerRuntime(Transform followRoot, bool snapFramingLikeAutoBind)
+    {
+        player = followRoot;
+        _offsetInitialized = false;
+        if (followRoot == null)
+            return;
+
+        if (snapFramingLikeAutoBind)
+            ApplyAutoBindInitialFraming();
+        else
+        {
+            _cameraOffset = transform.position - player.position;
+            _offsetInitialized = true;
+        }
     }
 
     /// <summary>TestPlayer 生成：先摆相机再记下跟随偏移，避免沿用场景里错误的初始机位。</summary>

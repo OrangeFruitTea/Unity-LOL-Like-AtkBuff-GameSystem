@@ -10,7 +10,7 @@ namespace Gameplay.Combat.Targeting
     public sealed class MvpHeroBasicAttackDebugBridge : MonoBehaviour
     {
         [SerializeField] private EntityBase attacker;
-        [SerializeField] private KeyCode attackNearestKey = KeyCode.Space;
+        [SerializeField] private KeyCode attackNearestKey = KeyCode.A;
         [SerializeField] private KeyCode attackBoardHintKey = KeyCode.Return;
         [SerializeField] private float attackCooldownSeconds = 0.35f;
 

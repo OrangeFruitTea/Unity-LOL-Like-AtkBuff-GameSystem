@@ -90,8 +90,8 @@ namespace Gameplay.Presentation.Interaction
                 return false;
 
             var ray = targetCamera.ScreenPointToRay(screenPosition);
-            var mask = selectableLayers.value != 0 ? selectableLayers : Physics.DefaultRaycastLayers;
-            if (!Physics.Raycast(ray, out var hit, hoverRayDistance, mask, QueryTriggerInteraction.Ignore))
+            var layerMask = selectableLayers.value != 0 ? selectableLayers.value : Physics.DefaultRaycastLayers;
+            if (!Physics.Raycast(ray, out var hit, hoverRayDistance, layerMask, QueryTriggerInteraction.Ignore))
                 return false;
 
             selectableRoot = SelectablePresentationResolve.TryResolveRoot(hit.collider);

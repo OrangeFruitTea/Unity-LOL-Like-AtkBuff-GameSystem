@@ -4,6 +4,7 @@ using Core.ECS;
 using UnityEngine;
 using UnityEngine.UI;
 using Basement.Utils;
+using Widgets.PlayerStatement;
 
 namespace Core.UI
 {
@@ -84,6 +85,8 @@ namespace Core.UI
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = (int)layerType; // 用枚举值作为排序值，确保层级优先级
             canvas.overrideSorting = true;
+            // 枚举值亦是全局 Overlay 排序（如 HUD=30）。预制体内子 Canvas 若 Override Sorting 且 order 更小，
+            // 会先被本层整块后绘盖住；单挂在场景另一条 Canvas 上时常见问题不明显。
 
             // 3. 添加CanvasScaler（适配不同分辨率）
             var scaler = layerObj.AddComponent<CanvasScaler>();
@@ -269,6 +272,44 @@ namespace Core.UI
             {
                 instanceId = Guid.Empty;
                 Debug.LogError("[UIManager] GenerateUI 返回成功但未登记实例根物体。");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Resources 路径（无扩展名）。对应 <c>Assets/_Project/Resources/UI/Widgets/Game/Statement/StatementWidget.prefab</c>。
+        /// </summary>
+        public const string StatementWidgetResourcePath = StatementWidgetElement.StatementWidgetResourcePath;
+
+        /// <summary>
+        /// 生成完整 Statement 预制（血/蓝条、Buff 根、属性详情）；见 <see cref="StatementWidget"/>。
+        /// </summary>
+        public bool TrySpawnStatementWidget(
+            out Guid instanceId,
+            out GameObject root,
+            UILayerType layerType = UILayerType.HUD,
+            UIAnchorType anchorType = UIAnchorType.Center,
+            Vector2 position = default,
+            Vector2 size = default,
+            bool dontDestroyOnLoad = false)
+        {
+            root = null;
+            var element = StatementWidgetElement.CreateForHud(layerType, anchorType, position, size, dontDestroyOnLoad);
+
+            if (!GenerateUI(element))
+            {
+                instanceId = Guid.Empty;
+                Debug.LogError($"[UIManager] StatementWidget 生成失败（Resources 路径: {StatementWidgetResourcePath}）。");
+                return false;
+            }
+
+            instanceId = element.UiInstanceId;
+            if (!_activeUiInstances.TryGetValue(instanceId, out root) || root == null)
+            {
+                instanceId = Guid.Empty;
+                Debug.LogError("[UIManager] GenerateUI 返回成功但未登记 StatementWidget 根物体。");
                 return false;
             }
 

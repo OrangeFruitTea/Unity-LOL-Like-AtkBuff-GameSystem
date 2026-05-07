@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine.AI;
 using UnityEngine;
 
@@ -18,6 +19,13 @@ public class MovementController : MonoBehaviour
 
     [Tooltip("将自身 / 点击点投影到 NavMesh 时的最大水平搜索半径（米）。")]
     [SerializeField] private float navMeshSampleRadius = 4f;
+
+    [Tooltip(
+        "用于将屏幕射线落到「地表」：未勾选的层不参与 Physics 射线。\n行走面须有 Collider（如 MeshCollider），否则射线会穿透，只能偶尔点到自身或其它物体的碰撞盒。")]
+    [SerializeField] private LayerMask clickRaycastMask = Physics.DefaultRaycastLayers;
+
+    [Tooltip("若为 true：按距离跳过命中的碰撞体中与自身同一单位（本 Transform 及以下）的子碰撞体，避免点到身上导致仅能小范围挪动。")]
+    [SerializeField] private bool skipOwnCollidersWhenRaycasting = true;
 
     void Start()
     {
@@ -40,33 +48,64 @@ public class MovementController : MonoBehaviour
                 return;
 
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            RaycastHit hit;
-            // 确认是否点击到使用NavMeshSystem的物体
-            if (Physics.Raycast(ray, out hit, Mathf.Infinity))
+            foreach (var hit in GetOrderedRayHits(ray))
             {
+                if (skipOwnCollidersWhenRaycasting &&
+                    hit.collider != null &&
+                    IsColliderBelowOrOn(hit.collider.transform, transform))
+                    continue;
+
                 if (!NavMesh.SamplePosition(hit.point, out var navHit, navMeshSampleRadius, NavMesh.AllAreas))
-                {
-                    Debug.LogWarning(
-                        $"{nameof(MovementController)}: 点击处附近 {navMeshSampleRadius}m 内无 NavMesh，已忽略本次移动。");
-                    return;
-                }
+                    continue;
 
-                // MOVEMENT（目标点必须为可导航点）
-                _agent.SetDestination(navHit.position);
-                // ROTATION
-                var look = navHit.position - transform.position;
-                look.y = 0f;
-                if (look.sqrMagnitude < 0.0001f)
-                    return;
-
-                Quaternion rotationToLookAt = Quaternion.LookRotation(look);
-                float rotationY = Mathf.SmoothDampAngle(transform.eulerAngles.y,
-                    rotationToLookAt.eulerAngles.y,
-                    ref _rotateVelocity,
-                    rotateSpeedMovement * (Time.deltaTime * 5));
-                transform.eulerAngles = new Vector3(0, rotationY, 0);
+                ApplyMove(navHit.position);
+                return;
             }
+
+            Debug.LogWarning(
+                $"{nameof(MovementController)}: 从屏幕射线未得到可用落点——请确认地面有可射线检测的 Collider，且图层在 clickRaycastMask 内。"
+                + $"（若在 {navMeshSampleRadius}m 内均无 NavMesh 也会跳过该次命中）。");
         }
+    }
+
+    private IEnumerable<RaycastHit> GetOrderedRayHits(Ray ray)
+    {
+        var hits = Physics.RaycastAll(ray, Mathf.Infinity, clickRaycastMask, QueryTriggerInteraction.Ignore);
+        if (hits == null || hits.Length == 0)
+            yield break;
+
+        foreach (var h in hits.OrderBy(x => x.distance))
+            yield return h;
+    }
+
+    private static bool IsColliderBelowOrOn(Transform hitTransform, Transform selfRoot)
+    {
+        while (hitTransform != null)
+        {
+            if (hitTransform == selfRoot)
+                return true;
+            hitTransform = hitTransform.parent;
+        }
+
+        return false;
+    }
+
+    private void ApplyMove(Vector3 destinationOnNavmesh)
+    {
+        _agent.SetDestination(destinationOnNavmesh);
+
+        var look = destinationOnNavmesh - transform.position;
+        look.y = 0f;
+        if (look.sqrMagnitude < 0.0001f)
+            return;
+
+        var rotationToLookAt = Quaternion.LookRotation(look);
+        var rotationY = Mathf.SmoothDampAngle(
+            transform.eulerAngles.y,
+            rotationToLookAt.eulerAngles.y,
+            ref _rotateVelocity,
+            rotateSpeedMovement * (Time.deltaTime * 5));
+        transform.eulerAngles = new Vector3(0, rotationY, 0);
     }
 
     /// <summary>

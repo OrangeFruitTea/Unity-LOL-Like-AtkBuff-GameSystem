@@ -43,7 +43,7 @@ namespace Gameplay.Presentation.SkillVfx
                 if (spec.moment == SkillFxMoment.OnCastSucceeded)
                     SpawnOne(in spec, context);
                 else if (spec.moment == SkillFxMoment.AfterDelaySeconds && isActiveAndEnabled)
-                    StartCoroutine(SpawnAfterDelay(in spec, context, Mathf.Max(0f, spec.delaySeconds)));
+                    StartCoroutine(SpawnAfterDelay(spec, context, Mathf.Max(0f, spec.delaySeconds)));
             }
         }
 

@@ -6,7 +6,7 @@ namespace Presentation.Runtime
 {
     /// <summary>
     /// 表现层运行时引导：在 <see cref="RuntimeInitializeLoadType.BeforeSceneLoad"/> 确保 <see cref="EcsWorld"/> 与 <see cref="UIManager"/> 就绪。
-    /// DetailStatement 等需在单位 <see cref="EcsEntityBridge"/> 有效后由生成方（如 <see cref="Core.Entity.TestPlayerSpawner"/>）再 <c>TrySpawnDetailStatement</c> + <c>BindEcsBridgeConsumers</c>。
+    /// <see cref="Widgets.PlayerStatement.StatementWidget"/> 等需在单位 <see cref="EcsEntityBridge"/> 有效后由生成方（如 <see cref="Core.Entity.TestPlayerSpawner"/>）再 <c>UIManager.TrySpawnStatementWidget</c>，并由根节点 <see cref="Widgets.PlayerStatement.StatementWidget.Bind(Core.ECS.EcsEntityBridge)"/> 注入该局内玩家的桥接。
     /// </summary>
     public static class PresentationRuntimeBootstrap
     {
