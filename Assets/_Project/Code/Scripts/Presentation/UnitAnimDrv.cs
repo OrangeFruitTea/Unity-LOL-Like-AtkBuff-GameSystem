@@ -340,6 +340,17 @@ namespace Gameplay.Presentation
             animator.SetBool(_hashIsDead, true);
         }
 
+        /// <summary>软复活：清除本地死亡门闸并复位 Animator（由 <see cref="Core.Entity.UnitDeathRespawnBehaviour"/> 等调用）。</summary>
+        public void NotifyRevived()
+        {
+            _dead = false;
+            _strikeArmed = false;
+            StopStrikeFallbackCoroutine();
+
+            if (animator != null)
+                animator.SetBool(_hashIsDead, false);
+        }
+
         private void StopStrikeFallbackCoroutine()
         {
             if (_strikeFallbackCo == null)
@@ -349,3 +360,4 @@ namespace Gameplay.Presentation
         }
     }
 }
+
