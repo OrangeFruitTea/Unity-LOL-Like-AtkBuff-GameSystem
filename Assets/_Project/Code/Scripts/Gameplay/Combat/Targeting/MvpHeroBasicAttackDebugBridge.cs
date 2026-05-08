@@ -9,9 +9,17 @@ namespace Gameplay.Combat.Targeting
     [DisallowMultipleComponent]
     public sealed class MvpHeroBasicAttackDebugBridge : MonoBehaviour
     {
-        [SerializeField] private EntityBase attacker;
-        [SerializeField] private KeyCode attackNearestKey = KeyCode.A;
-        [SerializeField] private KeyCode attackBoardHintKey = KeyCode.Return;
+        [SerializeField]
+        private EntityBase attacker;
+
+        [SerializeField]
+        private bool enableLegacyHotkeySwings;
+
+        [SerializeField]
+        private KeyCode attackNearestKey = KeyCode.Space;
+
+        [SerializeField]
+        private KeyCode attackBoardHintKey = KeyCode.Return;
         [SerializeField] private float attackCooldownSeconds = 0.35f;
 
         [Header("Debug")]
@@ -33,6 +41,9 @@ namespace Gameplay.Combat.Targeting
         private void Update()
         {
             if (attacker == null || Time.time < _nextSwingTime)
+                return;
+
+            if (!enableLegacyHotkeySwings)
                 return;
 
             if (Input.GetKeyDown(attackNearestKey))

@@ -37,7 +37,7 @@ namespace Basement.Configuration
         public float PenAP { get; set; } = 0.0f; // 魔法穿透
         public float LifeSteal { get; set; } = 0.0f; // 生命偷取
         public float OmniVamp { get; set; } = 0.0f; // 全能吸血
-        public float AtkDistance { get; set; } = 1.5f; // 攻击距离
+        public float AtkDistance { get; set; } = 250f; // 攻击距离（与英雄生成基准对齐）
         public float CriticalDamage { get; set; } = 1.5f; // 暴击伤害
         public float Resilience { get; set; } = 0.0f; // 韧性
 
@@ -157,9 +157,9 @@ namespace Basement.Configuration
                 errors.Add("全能吸血必须在0-1.0之间");
             }
 
-            if (AtkDistance < 0.1f || AtkDistance > 20.0f)
+            if (AtkDistance < 0.1f || AtkDistance > 2000f)
             {
-                errors.Add("攻击距离必须在0.1-20.0之间");
+                errors.Add("攻击距离必须在0.1-2000之间");
             }
 
             if (CriticalDamage < 1.0f || CriticalDamage > 5.0f)

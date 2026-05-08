@@ -97,11 +97,14 @@ namespace Core.Entity
 
         private void AddBaseComponents(EcsEntity ecsEntity, EntityBase sceneEntity)
         {
+            var profile = sceneEntity.GetComponent<CombatEntitySpawnProfile>();
+
             var dataComp = new EntityDataComponent();
             dataComp.InitializeDefaults();
+            if (profile != null && profile.AddArchetype)
+                CombatUnitDefaultAttackRanges.ApplyArchetype(ref dataComp, profile.Archetype);
             EcsWorld.AddComponent(ecsEntity, dataComp);
 
-            var profile = sceneEntity.GetComponent<CombatEntitySpawnProfile>();
             if (profile == null)
                 return;
 

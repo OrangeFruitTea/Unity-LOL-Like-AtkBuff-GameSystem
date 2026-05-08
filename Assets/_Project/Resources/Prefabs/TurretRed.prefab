@@ -149,7 +149,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   module:
     LaneSlotId: 0
-    AggroAcquireRange: 8
+    AggroAcquireRange: 350
     TargetingMode: 0
     PlatingStacks: 0
     AggroHeroHint: 0

@@ -26,6 +26,12 @@ namespace Gameplay.Combat.Targeting
         {
             if (controlledUnit == null || targetCamera == null)
                 return;
+
+            if (controlledUnit.TryGetComponent<HeroAttackRangeSelectBridge>(out var atkBridge) &&
+                atkBridge != null &&
+                atkBridge.SuppressesStandaloneCombatBoardRaySelect())
+                return;
+
             if (!Input.GetMouseButtonDown(0))
                 return;
 

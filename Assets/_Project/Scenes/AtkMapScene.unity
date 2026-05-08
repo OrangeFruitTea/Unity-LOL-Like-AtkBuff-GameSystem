@@ -18320,6 +18320,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1122888136}
     m_Modifications:
+    - target: {fileID: 276167997696389696, guid: 898d08bb7577c2e40ae11185728984e2, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 276167997696389696, guid: 898d08bb7577c2e40ae11185728984e2, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 4885077184052720130, guid: 898d08bb7577c2e40ae11185728984e2, type: 3}
       propertyPath: m_Name
       value: BasicTurret
@@ -21663,6 +21671,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1122888136}
     m_Modifications:
+    - target: {fileID: 546495144918493790, guid: a835104a0c88f24419088ad74b29baa3, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 546495144918493790, guid: a835104a0c88f24419088ad74b29baa3, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 4885077184052720130, guid: a835104a0c88f24419088ad74b29baa3, type: 3}
       propertyPath: m_Name
       value: BasicCrystal
@@ -26304,6 +26320,14 @@ PrefabInstance:
       propertyPath: m_Name
       value: TurretRed
       objectReference: {fileID: 0}
+    - target: {fileID: 6099280760804682808, guid: c506c790de818fd4b8afd2e147164ffe, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6099280760804682808, guid: c506c790de818fd4b8afd2e147164ffe, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -26317,6 +26341,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1482579611}
     m_Modifications:
+    - target: {fileID: 1217459107299943165, guid: 182a9a25dc1be214e8995350c8583df3, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1217459107299943165, guid: 182a9a25dc1be214e8995350c8583df3, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 8232108932162199121, guid: 182a9a25dc1be214e8995350c8583df3, type: 3}
       propertyPath: m_LocalPosition.x
       value: 3.98

@@ -49,6 +49,7 @@ GameObject:
   - component: {fileID: 8409604478084145947}
   - component: {fileID: 1377874282117089083}
   - component: {fileID: 5024367120157957509}
+  - component: {fileID: 1798336020060833173}
   m_Layer: 0
   m_Name: BasicEntity
   m_TagString: Untagged
@@ -89,6 +90,7 @@ MonoBehaviour:
   rotateSpeedMovement: 0.1
   speed: 5
   moveKey: 324
+  stopNavigationKey: 115
   navMeshSampleRadius: 4
   clickRaycastMask:
     serializedVersion: 2
@@ -235,10 +237,36 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   attacker: {fileID: 8568759599105471297}
+  enableLegacyHotkeySwings: 0
   attackNearestKey: 97
   attackBoardHintKey: 13
   attackCooldownSeconds: 0.35
   logCombatPipeline: 1
+--- !u!114 &1798336020060833173
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6890991949751230397}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a600fa6a8e191ce4fbd5a2d492b45148, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  attacker: {fileID: 0}
+  groundIndicator: {fileID: 0}
+  attackRangeTextureDisc: {fileID: 0}
+  targetCamera: {fileID: 0}
+  attackRangeHoldKey: 97
+  attackRangeRingColor: {r: 0.34901965, g: 0.9569301, b: 1, a: 0.92}
+  useMouseLeftForTargetPick: 1
+  suppressStandaloneCombatBoardRayPick: 1
+  swingCooldownSeconds: 0.35
+  rayMaxDistance: 500
+  unitRaycastMask:
+    serializedVersion: 2
+    m_Bits: 0
 --- !u!1 &8370901353188155453
 GameObject:
   m_ObjectHideFlags: 0

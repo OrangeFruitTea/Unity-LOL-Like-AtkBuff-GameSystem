@@ -27,7 +27,7 @@ namespace Core.Entity
         public void InitializeDefaults()
         {
             LaneSlotId = 0;
-            AggroAcquireRange = 8f;
+            AggroAcquireRange = 350f;
             TargetingMode = TowerTargetingMode.NearestThreat;
             PlatingStacks = 0;
             AggroHeroHint = false;
