@@ -8,7 +8,7 @@ using UnityEngine.Serialization;
 namespace Gameplay.Combat.Targeting
 {
     /// <summary>
-    /// **按住 A**：经 <see cref="GroundWorldLineIndicator"/> 绘制普攻地面圆环（<see cref="LineRenderer"/>）；**松开 A** 即隐藏。**仅在按住期间**可用 **左键(M0)** 点选敌对单位 → 单次普攻。<br/>
+    /// **按住 A**：经 <see cref="GroundWorldLineIndicator"/> 绘制普攻地面圆环（<see cref="LineRenderer"/>）；半径为 ECS 普攻逻辑距离除以「逻辑单位/世界米」得到世界半径（见 <see cref="CombatTargetingRange.GameAttackDistanceToWorldDisplayRadius"/>）。**松开 A** 即隐藏。**仅在按住期间**可用 **左键(M0)** 点选敌对单位 → 单次普攻。<br/>
     /// <see cref="MeleeStrikeRules"/>；<see cref="CombatBoardTargetSync"/>；Anim/<see cref="DefaultCombatImpactDispatch"/>。<br/>
     /// <see cref="CombatBoardRaySelectTarget"/>：<see cref="suppressStandaloneCombatBoardRayPick"/> 为 true 时左键点选由其接管语义。
     /// </summary>
@@ -41,6 +41,14 @@ namespace Gameplay.Combat.Targeting
         [Tooltip("普攻范围圈颜色（地面圆环）。")]
         [SerializeField]
         private Color attackRangeRingColor = new Color(1f, 0.85f, 0.35f, 0.92f);
+
+        [Header("Range ring display (logical → world)")]
+        [Tooltip(
+            "与 CombatTargetingRange 一致：存档值不小于 100 时按逻辑单位再除以本值得到世界半径；更小则已是世界单位。塔/小兵/野怪战斗距离换算相同。")]
+        [SerializeField]
+        [Min(1e-6f)]
+        private float attackRangeLogicalUnitsPerWorldMeter =
+            CombatTargetingRange.DefaultAttackDistanceLogicUnitsPerWorldMeter;
 
         [Tooltip("点名敌单位：左键。与本项目 MovementController（默认右键寻路 Mouse1）不冲突。")]
         [SerializeField]
@@ -188,12 +196,15 @@ namespace Gameplay.Combat.Targeting
 
         private void RefreshAttackRingVisualization()
         {
-            var radius = CombatTargetingRange.ResolveForCaster(attacker, 0f);
-            if (radius < 1e-4f)
+            float radiusWorld = CombatTargetingRange.ResolveForCasterWorldDisplayRadius(
+                attacker,
+                0f,
+                attackRangeLogicalUnitsPerWorldMeter);
+            if (radiusWorld < 1e-4f)
                 return;
 
             var center = attacker.transform.position;
-            groundIndicator.PushAttackRangeCircle(center, radius, attackRangeRingColor);
+            groundIndicator.PushAttackRangeCircle(center, radiusWorld, attackRangeRingColor);
         }
 
         private void ExitAttackTargetingMode()

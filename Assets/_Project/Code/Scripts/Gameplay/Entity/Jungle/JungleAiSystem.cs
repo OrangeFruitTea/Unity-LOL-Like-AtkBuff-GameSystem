@@ -3,6 +3,7 @@ using Core.Combat;
 using Core.Entity;
 using Core.Gameplay;
 using Core.ECS;
+using Gameplay.Combat.Targeting;
 using UnityEngine;
 
 namespace Core.Entity.Jungle
@@ -135,7 +136,8 @@ namespace Core.Entity.Jungle
                 !EntityEcsLinkRegistry.TryGetEntityBase(target, out var other))
                 return;
 
-            float atkRange = (float)data.GetData(EntityBaseData.AtkDistance);
+            float atkRange = CombatTargetingRange.StoredAttackDistanceToWorldDistance(
+                (float)data.GetData(EntityBaseData.AtkDistance));
             if ((ego.transform.position - other.transform.position).sqrMagnitude > atkRange * atkRange)
                 return;
 

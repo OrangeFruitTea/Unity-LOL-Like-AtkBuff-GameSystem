@@ -35,7 +35,7 @@ namespace Gameplay.Combat.Targeting
 
             var caster = request.Caster;
             var victimEcs = new EcsEntity(hint);
-            float maxDist = CombatTargetingRange.ResolveForCaster(caster, request.RangeOrRadius);
+            float maxDist = CombatTargetingRange.ResolveForCasterWorldDistance(caster, request.RangeOrRadius);
 
             if (!EntityEcsLinkRegistry.TryGetEntityBase(victimEcs, out var victimHost))
                 return TargetAcquisitionResult.Fail("hint target has no EntityBase in registry");

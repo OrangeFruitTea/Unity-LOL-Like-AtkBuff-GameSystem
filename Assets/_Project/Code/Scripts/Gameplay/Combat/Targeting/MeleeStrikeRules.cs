@@ -9,7 +9,8 @@ namespace Gameplay.Combat.Targeting
         private const float HpEpsilon = 1e-6f;
 
         /// <summary>
-        /// <paramref name="maxMeleeRangeOrZero"/> ≤0 则用攻击者 <see cref="EntityBaseData.AtkDistance"/>。
+        /// <paramref name="maxMeleeRangeOrZero"/>≤0：从攻击者 <see cref="EntityBaseData.AtkDistance"/> 读取，再经 <see cref="CombatTargetingRange.StoredAttackDistanceToWorldDistance"/> 为世界距离。<br/>
+        /// 为正：视作调用方传入的<strong>世界距离上限</strong>（索敌链路会先 <see cref="CombatTargetingRange.ResolveForCasterWorldDistance"/>）。
         /// </summary>
         public static bool TryValidateMeleeStrike(
             EntityBase attacker,
@@ -76,7 +77,8 @@ namespace Gameplay.Combat.Targeting
 
             float maxDist = maxMeleeRangeOrZero > 1e-6f
                 ? maxMeleeRangeOrZero
-                : (float)srcEcs.GetComponent<EntityDataComponent>().GetData(EntityBaseData.AtkDistance);
+                : CombatTargetingRange.StoredAttackDistanceToWorldDistance(
+                    (float)srcEcs.GetComponent<EntityDataComponent>().GetData(EntityBaseData.AtkDistance));
 
             if (maxDist > 1e-6f &&
                 EntityEcsLinkRegistry.TryGetEntityBase(srcEcs, out var ego) &&

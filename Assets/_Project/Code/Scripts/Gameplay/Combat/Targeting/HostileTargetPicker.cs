@@ -29,7 +29,7 @@ namespace Gameplay.Combat.Targeting
                 return false;
             }
 
-            float range = CombatTargetingRange.ResolveForCaster(caster, rangeOrRadius);
+            float range = CombatTargetingRange.ResolveForCasterWorldDistance(caster, rangeOrRadius);
             if (range <= 1e-6f)
             {
                 error = "resolved range is 0";

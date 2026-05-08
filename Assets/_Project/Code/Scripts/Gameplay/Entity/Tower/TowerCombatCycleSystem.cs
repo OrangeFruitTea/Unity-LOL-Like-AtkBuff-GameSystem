@@ -1,6 +1,7 @@
 using Core.Combat;
 using Core.Gameplay;
 using Core.ECS;
+using Gameplay.Combat.Targeting;
 using UnityEngine;
 
 namespace Core.Entity
@@ -62,8 +63,9 @@ namespace Core.Entity
                 {
                     case TowerCombatPhase.IdleScan:
                     case TowerCombatPhase.Interrupted:
+                        var aggroWorld = CombatTargetingRange.StoredAttackDistanceToWorldDistance(module.AggroAcquireRange);
                         if (CombatTargetAcquire.TryPickNearestHostileInRange(
-                                ecs, faction.TeamId, module.AggroAcquireRange, out var picked))
+                                ecs, faction.TeamId, aggroWorld, out var picked))
                         {
                             board.AttackTargetEntityId = picked.Id;
                             board.ThreatTargetEntityId = picked.Id;
@@ -178,7 +180,7 @@ namespace Core.Entity
                 !EntityEcsLinkRegistry.TryGetEntityBase(candidate, out var other))
                 return false;
 
-            float r = module.AggroAcquireRange;
+            float r = CombatTargetingRange.StoredAttackDistanceToWorldDistance(module.AggroAcquireRange);
             return (ego.transform.position - other.transform.position).sqrMagnitude <= r * r;
         }
     }
