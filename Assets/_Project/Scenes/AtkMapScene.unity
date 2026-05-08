@@ -6205,6 +6205,57 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 27f103ccd2c248445af55fbd5a9b8261, type: 3}
   m_PrefabInstance: {fileID: 466713013}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &472368224
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 472368226}
+  - component: {fileID: 472368225}
+  m_Layer: 0
+  m_Name: PresentationHub
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &472368225
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 472368224}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: af5c4623fe8fa5d4db11c4cc20115d07, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetCamera: {fileID: 1999914843}
+  pollHoverAutomatically: 1
+  selectableLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  hoverRayDistance: 500
+  suppressHoverWhenPointerOverUi: 1
+--- !u!4 &472368226
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 472368224}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 9.372666, y: 6.718294, z: 2.4523525}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &475577503
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -26279,3 +26330,4 @@ SceneRoots:
   - {fileID: 1950619798}
   - {fileID: 1140181197}
   - {fileID: 746025892}
+  - {fileID: 472368226}
