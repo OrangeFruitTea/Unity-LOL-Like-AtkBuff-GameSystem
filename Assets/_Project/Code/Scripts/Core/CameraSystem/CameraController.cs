@@ -22,6 +22,12 @@ public class CameraController : MonoBehaviour
     [SerializeField]
     private Vector3 lookAtFocusPointOffset = new Vector3(0f, 1f, 0f);
 
+    [Header("距离（保持偏移方向，仅缩短长度；Update 不改旋转）")]
+    [Tooltip("将「玩家→相机」偏移量按该系数缩放：<1 更近，1 保持原相对距离，>1 更远。方向不变，故俯仰/环绕角不变。")]
+    [SerializeField]
+    [Range(0.25f, 1.25f)]
+    private float followDistanceMultiplier = 0.72f;
+
     private Vector3 _cameraOffset;
     private bool _offsetInitialized;
 
@@ -96,7 +102,7 @@ public class CameraController : MonoBehaviour
             ApplyAutoBindInitialFraming();
         else
         {
-            _cameraOffset = transform.position - player.position;
+            _cameraOffset = ScaleOffsetKeepingDirection(transform.position - player.position);
             _offsetInitialized = true;
         }
     }
@@ -107,12 +113,18 @@ public class CameraController : MonoBehaviour
         if (player == null)
             return;
 
-        transform.position = player.position + autoBindWorldOffsetFromPlayer;
+        _cameraOffset = ScaleOffsetKeepingDirection(autoBindWorldOffsetFromPlayer);
+        transform.position = player.position + _cameraOffset;
         if (snapLookAtPlayerOnAutoBind)
             transform.LookAt(player.position + lookAtFocusPointOffset, Vector3.up);
 
-        _cameraOffset = transform.position - player.position;
         _offsetInitialized = true;
+    }
+
+    /// <summary>仅改变距离，不改变「从玩家指向相机」的方向，故跟随时的绕角/仰角关系不变。</summary>
+    private Vector3 ScaleOffsetKeepingDirection(Vector3 offsetFromPlayer)
+    {
+        return offsetFromPlayer * followDistanceMultiplier;
     }
 
     /// <summary>Inspector 已拖好 Player 时：保留场景机位与目标的相对关系。</summary>
@@ -121,7 +133,7 @@ public class CameraController : MonoBehaviour
         if (player == null || _offsetInitialized)
             return;
 
-        _cameraOffset = transform.position - player.position;
+        _cameraOffset = ScaleOffsetKeepingDirection(transform.position - player.position);
         _offsetInitialized = true;
     }
 

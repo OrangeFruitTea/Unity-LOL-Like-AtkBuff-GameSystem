@@ -15,6 +15,11 @@ public class MovementController : MonoBehaviour
     
     public float speed = 5.0f;
     public KeyCode moveKey = KeyCode.Mouse1;
+
+    [Tooltip("立即取消当前 NavMesh 导航（清路径、近似刹车）。")]
+    [SerializeField]
+    private KeyCode stopNavigationKey = KeyCode.S;
+
     private CharacterController _controller;
 
     [Tooltip("将自身 / 点击点投影到 NavMesh 时的最大水平搜索半径（米）。")]
@@ -41,6 +46,12 @@ public class MovementController : MonoBehaviour
 
         if (_agent == null || !_agent.isActiveAndEnabled)
             return;
+
+        if (Input.GetKeyDown(stopNavigationKey))
+        {
+            StopNavigationImmediate();
+            return;
+        }
 
         if (Input.GetKeyDown(moveKey))
         {
@@ -92,6 +103,7 @@ public class MovementController : MonoBehaviour
 
     private void ApplyMove(Vector3 destinationOnNavmesh)
     {
+        _agent.isStopped = false;
         _agent.SetDestination(destinationOnNavmesh);
 
         var look = destinationOnNavmesh - transform.position;
@@ -106,6 +118,22 @@ public class MovementController : MonoBehaviour
             ref _rotateVelocity,
             rotateSpeedMovement * (Time.deltaTime * 5));
         transform.eulerAngles = new Vector3(0, rotationY, 0);
+    }
+
+    /// <summary>
+    /// 清空路径并停止 Agent 推进（S 键）；下次 <see cref="ApplyMove"/> 会重新 <c>isStopped = false</c>。
+    /// </summary>
+    private void StopNavigationImmediate()
+    {
+        if (_agent == null || !_agent.isActiveAndEnabled)
+            return;
+
+        _agent.ResetPath();
+        if (_agent.isOnNavMesh)
+        {
+            _agent.velocity = Vector3.zero;
+            _agent.isStopped = true;
+        }
     }
 
     /// <summary>

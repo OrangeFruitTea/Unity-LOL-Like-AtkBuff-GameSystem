@@ -9,6 +9,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 9205979392327332101}
+  - component: {fileID: 3130084215266911920}
+  - component: {fileID: 6480468240775833793}
+  - component: {fileID: 6991800013325266769}
   m_Layer: 0
   m_Name: TurretBlue
   m_TagString: Untagged
@@ -33,6 +36,59 @@ Transform:
   - {fileID: 4447525837165323491}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3130084215266911920
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4885077184052720130}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d67daf53e479b894e8c81e40e03753f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  entityBridge: {fileID: 0}
+--- !u!114 &6480468240775833793
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4885077184052720130}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f5810d475e196b4da5fa500bfe298c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  AddFaction: 1
+  TeamId: 1
+  AddArchetype: 1
+  Archetype: 3
+  ConfigId: 0
+  AddCombatBoardLite: 1
+--- !u!114 &6991800013325266769
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4885077184052720130}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd71628848831ba479cee11c641319da, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  module:
+    LaneSlotId: 0
+    AggroAcquireRange: 8
+    TargetingMode: 0
+    PlatingStacks: 0
+    AggroHeroHint: 0
+    WarningDuration: 0.25
+    LockDuration: 0.15
+    StrikeHitDelay: 0
+    AttackCooldown: 1.2
 --- !u!1 &7085799941206384057
 GameObject:
   m_ObjectHideFlags: 0

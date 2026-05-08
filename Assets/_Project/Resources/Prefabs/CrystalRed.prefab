@@ -100,6 +100,10 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 8232108932162199121}
+  - component: {fileID: 7136598472088114598}
+  - component: {fileID: 6498703807229456359}
+  - component: {fileID: 5702164726501633507}
+  - component: {fileID: 9099983646636430943}
   m_Layer: 0
   m_Name: CrystalRed
   m_TagString: Untagged
@@ -124,6 +128,72 @@ Transform:
   - {fileID: 4859648889082234179}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7136598472088114598
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9155573913971598274}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d67daf53e479b894e8c81e40e03753f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  entityBridge: {fileID: 0}
+--- !u!114 &6498703807229456359
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9155573913971598274}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d67daf53e479b894e8c81e40e03753f6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  entityBridge: {fileID: 0}
+--- !u!114 &5702164726501633507
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9155573913971598274}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f5810d475e196b4da5fa500bfe298c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  AddFaction: 1
+  TeamId: 2
+  AddArchetype: 1
+  Archetype: 3
+  ConfigId: 0
+  AddCombatBoardLite: 1
+--- !u!114 &9099983646636430943
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9155573913971598274}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd71628848831ba479cee11c641319da, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  module:
+    LaneSlotId: 0
+    AggroAcquireRange: 8
+    TargetingMode: 0
+    PlatingStacks: 0
+    AggroHeroHint: 0
+    WarningDuration: 0.25
+    LockDuration: 0.15
+    StrikeHitDelay: 0
+    AttackCooldown: 1.2
 --- !u!1001 &2415953002006427955
 PrefabInstance:
   m_ObjectHideFlags: 0

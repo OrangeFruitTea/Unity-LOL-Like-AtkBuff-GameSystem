@@ -8,6 +8,7 @@ namespace Core.Entity
     {
         // 场景中等待初始化的EntityBase
         private Queue<EntityBase> _pendingEntities = new Queue<EntityBase>();
+        private readonly HashSet<EntityBase> _pendingOrSpawningDedupe = new HashSet<EntityBase>();
         // 每帧处理待初始化的实体
         public int UpdateOrder => 5;
 
@@ -28,6 +29,7 @@ namespace Core.Entity
         public void Destroy()
         {
             _pendingEntities.Clear();
+            _pendingOrSpawningDedupe.Clear();
         }
 
         /// <summary>
@@ -46,28 +48,51 @@ namespace Core.Entity
 
         public void AddPendingEntity(EntityBase entity)
         {
-            if (entity != null)
-            {
-                _pendingEntities.Enqueue(entity);
-            }
+            if (entity == null)
+                return;
+
+            if (entity.entityBridge != null && entity.entityBridge.IsValid())
+                return;
+
+            if (!_pendingOrSpawningDedupe.Add(entity))
+                return;
+
+            _pendingEntities.Enqueue(entity);
+        }
+
+        /// <summary>是否已通过本系统完成 ECS 绑定（或仍在队列/生成中）。用于场景摆放实体避免重复入队。</summary>
+        public bool HasPendingOrRegisteredBinding(EntityBase entity)
+        {
+            if (entity == null)
+                return false;
+            if (entity.entityBridge != null && entity.entityBridge.IsValid())
+                return true;
+            return _pendingOrSpawningDedupe.Contains(entity);
         }
 
         private void SpawnEcsEntity(EntityBase sceneEntity)
         {
-            if (sceneEntity.entityBridge == null)
+            try
             {
-                sceneEntity.entityBridge = sceneEntity.GetComponent<EcsEntityBridge>();
                 if (sceneEntity.entityBridge == null)
-                    sceneEntity.entityBridge = sceneEntity.gameObject.AddComponent<EcsEntityBridge>();
-            }
+                {
+                    sceneEntity.entityBridge = sceneEntity.GetComponent<EcsEntityBridge>();
+                    if (sceneEntity.entityBridge == null)
+                        sceneEntity.entityBridge = sceneEntity.gameObject.AddComponent<EcsEntityBridge>();
+                }
 
-            var ecsEntity = EcsWorld.Instance.EcsManager.CreateEntity();
-            sceneEntity.BoundEcsEntity = ecsEntity;
-            sceneEntity.entityBridge.BoundEcsEntity = ecsEntity;
-            AddBaseComponents(ecsEntity, sceneEntity);
-            EntityEcsLinkRegistry.Register(sceneEntity);
-            RunSpawnExtensions(ecsEntity, sceneEntity);
-            Debug.Log($"SpawnSystem创建ECS实体[ID: {ecsEntity.Id}]，关联场景实体: [{sceneEntity.EntityId}]");
+                var ecsEntity = EcsWorld.Instance.EcsManager.CreateEntity();
+                sceneEntity.BoundEcsEntity = ecsEntity;
+                sceneEntity.entityBridge.BoundEcsEntity = ecsEntity;
+                AddBaseComponents(ecsEntity, sceneEntity);
+                EntityEcsLinkRegistry.Register(sceneEntity);
+                RunSpawnExtensions(ecsEntity, sceneEntity);
+                Debug.Log($"SpawnSystem创建ECS实体[ID: {ecsEntity.Id}]，关联场景实体: [{sceneEntity.EntityId}]");
+            }
+            finally
+            {
+                _pendingOrSpawningDedupe.Remove(sceneEntity);
+            }
         }
 
         private void AddBaseComponents(EcsEntity ecsEntity, EntityBase sceneEntity)
