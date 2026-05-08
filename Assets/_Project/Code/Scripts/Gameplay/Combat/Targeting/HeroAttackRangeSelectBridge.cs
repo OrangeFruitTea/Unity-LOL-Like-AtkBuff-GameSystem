@@ -8,7 +8,7 @@ using UnityEngine.Serialization;
 namespace Gameplay.Combat.Targeting
 {
     /// <summary>
-    /// **按住 A**：显示普攻地面范围（可选世界空间 Canvas+<see cref="AttackRangeWorldUiDiscPresenter"/>，否则 <see cref="GroundWorldLineIndicator"/> 线框）；**松开 A** 即隐藏。**仅在按住期间**可用 **左键(M0)** 点选敌对单位 → 单次普攻。<br/>
+    /// **按住 A**：经 <see cref="GroundWorldLineIndicator"/> 绘制普攻地面圆环（<see cref="LineRenderer"/>）；**松开 A** 即隐藏。**仅在按住期间**可用 **左键(M0)** 点选敌对单位 → 单次普攻。<br/>
     /// <see cref="MeleeStrikeRules"/>；<see cref="CombatBoardTargetSync"/>；Anim/<see cref="DefaultCombatImpactDispatch"/>。<br/>
     /// <see cref="CombatBoardRaySelectTarget"/>：<see cref="suppressStandaloneCombatBoardRayPick"/> 为 true 时左键点选由其接管语义。
     /// </summary>
@@ -22,10 +22,6 @@ namespace Gameplay.Combat.Targeting
         [Tooltip("可选手动指定；留空则每次需要时自动查找场景中的 GroundWorldLineIndicator 并缓存（适合玩家动态生成）。")]
         [SerializeField]
         private GroundWorldLineIndicator groundIndicator;
-
-        [Tooltip("若指定：按住 A 时用世界 Canvas+Image 贴地展示范围，不再走 LineRenderer 圆环。")]
-        [SerializeField]
-        private AttackRangeWorldUiDiscPresenter attackRangeUiDisc;
 
         private static GroundWorldLineIndicator s_cachedSceneGroundIndicator;
 
@@ -78,9 +74,6 @@ namespace Gameplay.Combat.Targeting
 
             if (targetCamera == null)
                 targetCamera = Camera.main;
-
-            if (attackRangeUiDisc == null)
-                attackRangeUiDisc = GetComponentInChildren<AttackRangeWorldUiDiscPresenter>(true);
 
             ResolveGroundIndicator(includeInactive: false);
 
@@ -143,13 +136,11 @@ namespace Gameplay.Combat.Targeting
             if (holdingRangeKey && !_prevAttackRangeHoldKeyHeld)
             {
                 ResolveGroundIndicator(includeInactive: true);
-                if (groundIndicator == null &&
-                    attackRangeUiDisc == null &&
-                    !_loggedMissingGroundIndicator)
+                if (groundIndicator == null && !_loggedMissingGroundIndicator)
                 {
                     _loggedMissingGroundIndicator = true;
                     Debug.LogWarning(
-                        $"[{nameof(HeroAttackRangeSelectBridge)}] 未指定 {nameof(AttackRangeWorldUiDiscPresenter)} 且场景中找不到 {nameof(GroundWorldLineIndicator)} — 无法显示普攻范围。",
+                        $"[{nameof(HeroAttackRangeSelectBridge)}] 场景中未找到 {nameof(GroundWorldLineIndicator)} — 无法绘制普攻范围圈。（请在关卡放置一个带该组件的对象）",
                         this);
                 }
             }
@@ -178,7 +169,7 @@ namespace Gameplay.Combat.Targeting
                 return;
 
             ResolveGroundIndicator(includeInactive: false);
-            if (attackRangeUiDisc == null && groundIndicator == null)
+            if (groundIndicator == null)
                 return;
 
             RefreshAttackRingVisualization();
@@ -202,21 +193,11 @@ namespace Gameplay.Combat.Targeting
                 return;
 
             var center = attacker.transform.position;
-            if (attackRangeUiDisc != null)
-            {
-                attackRangeUiDisc.SetWorldDisc(center, 1f);
-                return;
-            }
-
-            if (groundIndicator != null)
-                groundIndicator.PushAttackRangeCircle(center, radius, attackRangeRingColor);
+            groundIndicator.PushAttackRangeCircle(center, radius, attackRangeRingColor);
         }
 
         private void ExitAttackTargetingMode()
         {
-            if (attackRangeUiDisc != null)
-                attackRangeUiDisc.SetVisible(false);
-
             ResolveGroundIndicator(includeInactive: false);
             if (groundIndicator != null)
                 groundIndicator.HidePreset(GroundPresentationPresetKind.AttackRange);

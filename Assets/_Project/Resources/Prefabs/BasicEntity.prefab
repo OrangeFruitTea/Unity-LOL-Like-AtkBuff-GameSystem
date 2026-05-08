@@ -256,7 +256,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   attacker: {fileID: 0}
   groundIndicator: {fileID: 0}
-  attackRangeTextureDisc: {fileID: 0}
+  attackRangeUiDisc: {fileID: 0}
   targetCamera: {fileID: 0}
   attackRangeHoldKey: 97
   attackRangeRingColor: {r: 0.34901965, g: 0.9569301, b: 1, a: 0.92}
