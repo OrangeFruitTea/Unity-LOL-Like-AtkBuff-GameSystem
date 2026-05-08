@@ -40,6 +40,9 @@ namespace Widgets.PlayerStatement
 
         private void TryWarmRef()
         {
+            if (ecsBridge == null)
+                ecsBridge = GetComponentInParent<EcsEntityBridge>();
+
             if (ecsBridge == null || !ecsBridge.IsValid())
                 return;
 
@@ -57,6 +60,8 @@ namespace Widgets.PlayerStatement
 
         private void Update()
         {
+            if (!_wired)
+                TryWarmRef();
             if (!_wired)
                 return;
 
